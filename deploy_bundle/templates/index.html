@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Generador de Planes Estrategicos</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="page-shell">
+    <section class="hero-card">
+      <div class="hero-copy">
+        <p class="eyebrow">Generador online</p>
+        <h1>Sube un briefing y descarga el PPTX en minutos</h1>
+        <p class="lede">
+          Esta version esta pensada para que cualquier persona del equipo use la herramienta
+          sin abrir Python ni tocar carpetas internas.
+        </p>
+      </div>
+      <div class="hero-orb"></div>
+    </section>
+
+    <section class="app-card">
+      <form action="/generate" method="post" enctype="multipart/form-data" class="upload-form">
+        <label class="field">
+          <span>Documento de entrada</span>
+          <input type="file" name="briefing" accept=".txt,.docx,.pdf" required />
+        </label>
+
+        <label class="field">
+          <span>Modo de salida</span>
+          <select name="mode">
+            <option value="auto">Detectar automaticamente</option>
+            <option value="combined">Presentacion combinada</option>
+            <option value="separate">Dos presentaciones separadas</option>
+            <option value="press">Solo plan de prensa</option>
+            <option value="content">Solo marketing de contenidos</option>
+          </select>
+        </label>
+
+        <button type="submit">Generar presentacion</button>
+      </form>
+
+      {% if message %}
+      <section class="result-panel">
+        <h2>Resultado</h2>
+        <p><strong>Modo aplicado:</strong> {{ message.detected }}</p>
+        {% if message.pending %}
+        <div class="pending-box">
+          <h3>Informacion pendiente de completar</h3>
+          <ul>
+            {% for item in message.pending %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% else %}
+        <p>No se detectaron campos pendientes criticos.</p>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if results %}
+      <section class="downloads">
+        <h2>Archivos generados</h2>
+        {% for item in results %}
+        <article class="download-card">
+          <div>
+            <h3>{{ item.name }}</h3>
+            <p>Presentacion final lista para descargar.</p>
+          </div>
+          <div class="download-actions">
+            <a href="{{ item.download_url }}">Descargar PPTX</a>
+            <a class="secondary" href="{{ item.summary_url }}">Descargar resumen</a>
+          </div>
+        </article>
+        {% endfor %}
+      </section>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

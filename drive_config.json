@@ -1,0 +1,8 @@
+{
+  "watch_folder": "C:\\Users\\dsala\\Google Drive\\Generador Planes de Medios\\incoming",
+  "processed_folder": "C:\\Users\\dsala\\Google Drive\\Generador Planes de Medios\\processed",
+  "output_folder": "C:\\Users\\dsala\\Google Drive\\Generador Planes de Medios\\output",
+  "error_folder": "C:\\Users\\dsala\\Google Drive\\Generador Planes de Medios\\error",
+  "default_mode": "auto",
+  "poll_seconds": 15
+}

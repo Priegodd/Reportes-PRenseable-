@@ -1,0 +1,69 @@
+DATOS GENERALES
+- Nombre del cliente: Cliente Ejemplo
+- Industria / sector: Tecnologia
+- Objetivo central de la estrategia: Posicionar a la marca como referente en innovacion y aumentar la visibilidad de sus soluciones.
+- Tipo de plan: Ambos
+- Agencia: Nombre de la agencia
+
+ANALISIS DE COMPETIDORES
+- Competidor 1: Marca A | total de notas: 48 | Tier 1: 10 | Tier 2: 14 | Tier 3: 16 | Tier 4: 8
+- Competidor 2: Marca B | total de notas: 36 | Tier 1: 8 | Tier 2: 11 | Tier 3: 9 | Tier 4: 8
+- Conclusiones del analisis: Marca A domina en Tier 1, mientras que Marca B concentra una presencia mas uniforme en medios secundarios.
+
+ANALISIS DE CONCEPTO CLAVE
+- Concepto clave analizado: Transformacion digital
+- Total de notas del concepto: 67
+- Tier 1: 15
+- Tier 2: 19
+- Tier 3: 21
+- Tier 4: 12
+- Tematicas mas repetidas: automatizacion; eficiencia operativa; IA aplicada; experiencia del cliente
+- Conclusiones: El concepto conecta mejor cuando se aterriza en beneficios concretos para el negocio.
+
+BUYER PERSONA
+- Nombre o arquetipo: Lider de Innovacion
+- Edad: 38
+- Profesion: Gerente de Transformacion Digital
+- Escenario en el que vive (contexto): Lidera iniciativas de cambio en una empresa mediana con presion por mostrar resultados rapidos.
+- Dolores / frustraciones: Falta de tiempo; resistencia interna al cambio; proveedores poco claros
+- Metas y objetivos: Modernizar procesos; demostrar ROI; ganar visibilidad interna
+- Personalidad (3 conceptos): analitico; pragmatico; curioso
+- Comportamiento para buscar informacion: Busca reportes, casos de exito, opinion de expertos y cobertura en medios de negocio.
+
+PILARES DE COMUNICACION
+- Pilar 1: Liderazgo y vision | Mostrar una mirada experta y clara sobre los cambios de la industria.
+- Pilar 2: Casos y resultados | Traducir la propuesta de valor en ejemplos concretos y medibles.
+
+PROPUESTAS DE TEMATICAS
+- Enero: Como modernizar procesos sin frenar la operacion | Que errores evitar al implementar IA en empresas medianas
+- Febrero: Tendencias de automatizacion para 2026 | Casos de exito que muestran ROI real
+
+PERIODISTAS CLAVE
+- Periodista 1: Ana Perez | Diario Financiero | Negocios
+- Periodista 2: Tomas Rojas | Pulso | Tecnologia
+
+PASOS ESTRATEGICOS
+- Paso 1: Definir narrativa principal y mensajes clave.
+- Paso 2: Priorizar medios y periodistas alineados al objetivo.
+- Paso 3: Preparar activos de voceria y comunicados.
+- Paso 4: Ejecutar relacionamiento y respuesta a contingencias.
+- Paso 5: Medir resultados y ajustar el enfoque mes a mes.
+
+ESTADO DE REDES SOCIALES DEL CLIENTE
+- Red social 1: LinkedIn | seguidores: 12000 | frecuencia de posteo: 2 veces por semana | tono: profesional | observaciones: Buen nivel de consistencia visual pero bajo uso de formatos interactivos.
+- Red social 2: Instagram | seguidores: 6500 | frecuencia de posteo: 1 vez por semana | tono: cercano | observaciones: Hay espacio para mayor frecuencia y contenido educativo.
+- Observaciones generales: La marca tiene una base solida, pero necesita una estrategia editorial mas clara y orientada a conversion.
+
+TACTICAS / TIPOS DE CONTENIDO
+- Tactica 1: Liderazgo de opinion | Articulos, columnas y posts con postura clara sobre la industria.
+- Tactica 2: Casos de exito | Historias de clientes con aprendizajes y resultados medibles.
+- Tactica 3: Microcontenidos | Clips, carruseles y piezas breves que simplifican temas complejos.
+
+PLAN DE EJECUCION
+- Descripcion de como se ejecutara la estrategia: Se trabajara con una planificacion mensual, una reunion editorial por mes, produccion de piezas priorizadas por impacto y seguimiento semanal de desempeno.
+
+METRICAS DE EXITO
+- KPI 1: Apariciones en medios Tier 1 y Tier 2
+- KPI 2: Share of voice frente a competidores
+- KPI 3: Alcance y engagement en LinkedIn
+- KPI 4: Leads atribuidos a contenido

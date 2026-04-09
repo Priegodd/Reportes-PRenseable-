@@ -1,0 +1,8 @@
+{
+  "watch_folder": "C:\\Users\\dsala\\Google Drive\\Shared drives\\Comunicaciones\\GeneradorPPT\\incoming",
+  "processed_folder": "C:\\Users\\dsala\\Google Drive\\Shared drives\\Comunicaciones\\GeneradorPPT\\processed",
+  "output_folder": "C:\\Users\\dsala\\Google Drive\\Shared drives\\Comunicaciones\\GeneradorPPT\\output",
+  "error_folder": "C:\\Users\\dsala\\Google Drive\\Shared drives\\Comunicaciones\\GeneradorPPT\\error",
+  "default_mode": "auto",
+  "poll_seconds": 15
+}
