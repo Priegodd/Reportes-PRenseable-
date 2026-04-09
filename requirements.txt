@@ -9,3 +9,4 @@ streamlit>=1.45.0
 google-api-python-client>=2.169.0
 google-auth>=2.40.0
 google-auth-oauthlib>=1.2.2
+openpyxl>=3.1.5
