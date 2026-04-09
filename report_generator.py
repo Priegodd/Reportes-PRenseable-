@@ -781,8 +781,8 @@ def add_distribution_chart(
     chart_data.add_series("Valor", [int(metric.value) for metric in metrics])
     ppt_chart_type = XL_CHART_TYPE.PIE if chart_type == "pie" else XL_CHART_TYPE.COLUMN_CLUSTERED
     chart = slide.shapes.add_chart(ppt_chart_type, left, top, width, height, chart_data).chart
+    chart.has_title = False
     chart.has_legend = True if chart_type == "pie" else False
-    chart.chart_style = 10
     if chart_type == "bar":
         chart.value_axis.has_major_gridlines = True
         chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
@@ -794,13 +794,20 @@ def add_distribution_chart(
         series.format.fill.fore_color.rgb = COLOR_PRIMARY
         series.format.line.color.rgb = COLOR_ACCENT
     else:
+        chart.plots[0].vary_by_categories = True
         for index, point in enumerate(series.points):
             point.format.fill.solid()
             point.format.fill.fore_color.rgb = CHART_COLORS[index % len(CHART_COLORS)]
             point.format.line.color.rgb = COLOR_WHITE
     plot = chart.plots[0]
     plot.has_data_labels = True
-    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    if chart_type == "pie":
+        plot.data_labels.show_percentage = True
+        plot.data_labels.show_category_name = True
+        plot.data_labels.show_value = False
+    else:
+        plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+        plot.data_labels.show_value = True
 
 
 def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
@@ -899,7 +906,7 @@ def add_monthly_trend_slide(
     chart_data.categories = [metric.label for metric in metrics]
     chart_data.add_series("Publicaciones", [int(metric.value) for metric in metrics])
     chart = slide.shapes.add_chart(
-        XL_CHART_TYPE.LINE_MARKERS,
+        XL_CHART_TYPE.LINE,
         Inches(0.85),
         Inches(1.55),
         Inches(7.1),
@@ -912,12 +919,6 @@ def add_monthly_trend_slide(
     chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
     series = chart.series[0]
     series.format.line.color.rgb = COLOR_PRIMARY
-    series.smooth = False
-    series.marker.style = 8
-    series.marker.size = 8
-    series.marker.format.fill.solid()
-    series.marker.format.fill.fore_color.rgb = COLOR_ACCENT
-    series.marker.format.line.color.rgb = COLOR_PRIMARY
 
     comments = [
         "Esta slide queda editable para mostrar la evolucion mensual de publicaciones.",
