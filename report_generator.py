@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from pypdf import PdfReader
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
@@ -95,6 +96,7 @@ class ReportData:
     executive_comment: str = ""
     next_steps: str = ""
     metrics: list[MetricPoint] = field(default_factory=list)
+    page_metrics: list[list[MetricPoint]] = field(default_factory=list)
     bullets: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
     extraction_notes: list[str] = field(default_factory=list)
@@ -233,6 +235,11 @@ def build_evidence(text: str, metrics: list[MetricPoint]) -> list[str]:
     return lines[:6]
 
 
+def extract_pdf_pages(pdf_path: Path) -> list[str]:
+    reader = PdfReader(str(pdf_path))
+    return [(page.extract_text() or "").strip() for page in reader.pages]
+
+
 def parse_report_pdf(
     pdf_path: Path,
     executive_comment: str = "",
@@ -242,7 +249,10 @@ def parse_report_pdf(
     report_month: str = "",
 ) -> ReportData:
     text = extract_text(pdf_path)
+    page_texts = extract_pdf_pages(pdf_path)
     metrics = extract_candidate_metrics(text)
+    page_metrics = [extract_candidate_metrics(page_text) for page_text in page_texts]
+    useful_pages = sum(1 for page in page_metrics if page)
     extraction_notes = []
     if metrics:
         extraction_notes.append(
@@ -252,6 +262,9 @@ def parse_report_pdf(
         extraction_notes.append(
             "No se detectaron metricas legibles; si el grafico esta embebido como imagen, sera necesario OCR o carga manual."
         )
+    extraction_notes.append(
+        f"Se detectaron {len(page_texts)} paginas y {useful_pages} con datos numericos reutilizables para slides individuales."
+    )
 
     title = report_title or f"Reporte Automatico {datetime.now():%B %Y}"
     return ReportData(
@@ -263,6 +276,7 @@ def parse_report_pdf(
         executive_comment=executive_comment.strip(),
         next_steps=next_steps.strip(),
         metrics=metrics,
+        page_metrics=page_metrics,
         bullets=build_quant_bullets(metrics),
         evidence=build_evidence(text, metrics),
         extraction_notes=extraction_notes,
@@ -296,6 +310,22 @@ def apply_report_background(slide, background_path: Path | None) -> None:
     resolved_background = resolve_asset_path(background_path, DEFAULT_SLIDE_BACKGROUND)
     if resolved_background:
         add_picture_safe(slide, resolved_background, 0, 0, width=Inches(13.333), height=Inches(7.5))
+        top_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(7.2), Inches(0.38), Inches(4.7), Inches(0.42))
+        top_mask.fill.solid()
+        top_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
+        top_mask.line.fill.background()
+        left_bracket_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(7.0), Inches(0.31), Inches(0.18), Inches(0.58))
+        left_bracket_mask.fill.solid()
+        left_bracket_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
+        left_bracket_mask.line.fill.background()
+        right_bracket_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(11.72), Inches(0.31), Inches(0.18), Inches(0.58))
+        right_bracket_mask.fill.solid()
+        right_bracket_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
+        right_bracket_mask.line.fill.background()
+        corner_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(12.14), 0, Inches(1.19), Inches(0.78))
+        corner_mask.fill.solid()
+        corner_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
+        corner_mask.line.fill.background()
     else:
         top_band = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, Inches(13.333), Inches(1.0))
         top_band.fill.solid()
@@ -335,6 +365,7 @@ def add_slide_base(prs: Presentation, title: str, background_path: Path | None, 
 
     title_box = slide.shapes.add_textbox(Inches(0.7), Inches(0.28), Inches(9.8), Inches(0.6))
     p = title_box.text_frame.paragraphs[0]
+    p.alignment = PP_ALIGN.LEFT
     run = p.add_run()
     run.text = title
     run.font.name = FONT_FAMILY
@@ -466,6 +497,70 @@ def add_metric_chart(slide, metrics: list[MetricPoint]) -> None:
     )
 
 
+def add_page_analysis_slide(
+    prs: Presentation,
+    page_number: int,
+    metrics: list[MetricPoint],
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, f"Grafico {page_number}", background_path, logo_path)
+    if not metrics:
+        add_text_block(
+            slide,
+            "Lectura de la pagina",
+            "No se rescataron metricas numericas legibles en esta pagina. Si el grafico viene como imagen, conviene complementar con OCR o carga manual.",
+            Inches(0.85),
+            Inches(1.55),
+            Inches(11.55),
+            Inches(1.4),
+        )
+        return
+
+    chart_metrics = metrics[:6]
+    chart_data = CategoryChartData()
+    chart_data.categories = [metric.label[:18] for metric in chart_metrics]
+    chart_data.add_series("Valor", [metric.value for metric in chart_metrics])
+
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.COLUMN_CLUSTERED,
+        Inches(0.9),
+        Inches(1.7),
+        Inches(6.9),
+        Inches(4.3),
+        chart_data,
+    ).chart
+    chart.has_legend = False
+    chart.value_axis.has_major_gridlines = True
+    chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    series = chart.series[0]
+    series.format.fill.solid()
+    series.format.fill.fore_color.rgb = COLOR_PRIMARY
+    series.format.line.color.rgb = COLOR_ACCENT
+    chart.plots[0].has_data_labels = True
+    chart.plots[0].data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+
+    add_bullet_list(
+        slide,
+        "Opinion cuantitativa",
+        build_quant_bullets(metrics),
+        Inches(8.0),
+        Inches(1.7),
+        Inches(4.45),
+        Inches(2.7),
+    )
+    add_bullet_list(
+        slide,
+        "Datos rescatados",
+        [f"{metric.label}: {metric.raw_value}" for metric in metrics[:5]],
+        Inches(8.0),
+        Inches(4.6),
+        Inches(4.45),
+        Inches(1.55),
+    )
+
+
 def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path | None, logo_path: Path | None) -> None:
     cover_background = resolve_asset_path(background_path, DEFAULT_COVER_BACKGROUND)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -475,24 +570,34 @@ def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path |
     if cover_background:
         add_picture_safe(slide, cover_background, 0, 0, width=Inches(13.333), height=Inches(7.5))
 
-    client_box = slide.shapes.add_textbox(Inches(0.75), Inches(5.45), Inches(6.3), Inches(0.55))
+    title_box = slide.shapes.add_textbox(Inches(2.0), Inches(2.6), Inches(9.33), Inches(0.5))
+    title_p = title_box.text_frame.paragraphs[0]
+    title_p.alignment = PP_ALIGN.CENTER
+    title_run = title_p.add_run()
+    title_run.text = data.title or "Reporte Automatico"
+    title_run.font.name = FONT_FAMILY
+    title_run.font.bold = True
+    title_run.font.size = Pt(20)
+    title_run.font.color.rgb = COLOR_WHITE
+
+    client_box = slide.shapes.add_textbox(Inches(2.0), Inches(3.2), Inches(9.33), Inches(0.5))
     p = client_box.text_frame.paragraphs[0]
-    p.alignment = PP_ALIGN.LEFT
+    p.alignment = PP_ALIGN.CENTER
     run = p.add_run()
-    run.text = data.client_name or data.title or "[Nombre del cliente]"
+    run.text = data.client_name or "[Nombre del cliente]"
     run.font.name = FONT_FAMILY
     run.font.bold = True
     run.font.size = Pt(20)
     run.font.color.rgb = COLOR_WHITE
 
-    month_box = slide.shapes.add_textbox(Inches(0.75), Inches(6.02), Inches(4.0), Inches(0.35))
+    month_box = slide.shapes.add_textbox(Inches(2.0), Inches(3.8), Inches(9.33), Inches(0.45))
     p2 = month_box.text_frame.paragraphs[0]
-    p2.alignment = PP_ALIGN.LEFT
+    p2.alignment = PP_ALIGN.CENTER
     run2 = p2.add_run()
     run2.text = data.report_month or datetime.now().strftime("%B %Y")
     run2.font.name = FONT_FAMILY
     run2.font.bold = False
-    run2.font.size = Pt(TITLE_SIZE)
+    run2.font.size = Pt(20)
     run2.font.color.rgb = COLOR_WHITE
 
 
@@ -618,8 +723,11 @@ def generate_report_from_pdf(
     slide_metrics = add_slide_base(prs, "Resumen de KPIs", background_path, logo_path)
     add_metric_cards(slide_metrics, data.metrics)
 
-    slide_chart = add_slide_base(prs, "Graficos y Opinion Cuantitativa", background_path, logo_path)
+    slide_chart = add_slide_base(prs, "Resumen Cuantitativo Consolidado", background_path, logo_path)
     add_metric_chart(slide_chart, data.metrics)
+
+    for page_index, page_metrics in enumerate(data.page_metrics, start=1):
+        add_page_analysis_slide(prs, page_index, page_metrics, background_path, logo_path)
 
     add_extraction_slide(prs, data, background_path, logo_path)
     add_exec_slide(prs, data, background_path, logo_path)
