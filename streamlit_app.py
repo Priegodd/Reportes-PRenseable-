@@ -7,7 +7,7 @@ from pathlib import Path
 import streamlit as st
 
 from generate_plan import generate_from_file
-from report_generator import generate_report_from_pdf
+from report_generator import generate_report_from_manual_fields, generate_report_from_pdf
 
 
 st.set_page_config(
@@ -173,7 +173,7 @@ def main() -> None:
             uploaded_file = st.file_uploader(
                 "Documento de entrada",
                 type=["txt", "docx", "pdf"],
-                help="Planes: TXT, DOCX o PDF. Reportes: PDF recomendado.",
+                help="Planes: TXT, DOCX o PDF. Reportes: PDF opcional como referencia.",
             )
             if generator_type[0] == "plan":
                 mode = st.selectbox(
@@ -191,7 +191,41 @@ def main() -> None:
                 mode = None
                 client_name = st.text_input("Nombre del cliente")
                 report_month = st.text_input("Mes del reporte", value="")
-                report_title = st.text_input("Titulo interno del reporte", value="Reporte Automatico Mensual")
+                report_title = st.text_input("Titulo interno del reporte", value="Reporte de Resultados")
+                monthly_summary = st.text_area(
+                    "Breve resumen del mes",
+                    placeholder="Resumen corto de resultados, hitos y aprendizajes del mes.",
+                    height=110,
+                )
+                st.markdown("**Distribucion de tiers**")
+                tier_cols = st.columns(4)
+                tier_1 = tier_cols[0].number_input("Tier 1", min_value=0, value=0, step=1)
+                tier_2 = tier_cols[1].number_input("Tier 2", min_value=0, value=0, step=1)
+                tier_3 = tier_cols[2].number_input("Tier 3", min_value=0, value=0, step=1)
+                tier_4 = tier_cols[3].number_input("Tier 4", min_value=0, value=0, step=1)
+
+                st.markdown("**Distribucion de medios**")
+                media_cols = st.columns(4)
+                media_digital = media_cols[0].number_input("Digital", min_value=0, value=0, step=1)
+                media_tv = media_cols[1].number_input("TV", min_value=0, value=0, step=1)
+                media_radio = media_cols[2].number_input("Radio", min_value=0, value=0, step=1)
+                media_written = media_cols[3].number_input("Escrito", min_value=0, value=0, step=1)
+
+                st.markdown("**Cantidad de apariciones por mes**")
+                monthly_values: list[int] = []
+                month_grid_rows = [st.columns(4), st.columns(4), st.columns(4)]
+                month_labels = [f"Mes {index}" for index in range(1, 13)]
+                month_index = 0
+                for row in month_grid_rows:
+                    for column in row:
+                        with column:
+                            monthly_values.append(
+                                st.number_input(month_labels[month_index], min_value=0, value=0, step=1, key=f"month_{month_index+1}")
+                            )
+                        month_index += 1
+
+                reach_value = st.text_input("Alcance de la gestion", value="")
+                valuation_value = st.text_input("Valorizacion", value="")
                 executive_comment = st.text_area(
                     "Comentario ejecutivo",
                     placeholder="Resumen de la gestion, hitos, aprendizajes y contexto del mes.",
@@ -201,6 +235,11 @@ def main() -> None:
                     "Pasos a seguir",
                     placeholder="Una accion por linea o separadas por punto y coma.",
                     height=120,
+                )
+                table_rows_text = st.text_area(
+                    "Tabla final de resultados",
+                    placeholder="Una fila por linea con este formato: fecha | cliente | medio | tipo medio | tier | tipo comunicado",
+                    height=180,
                 )
                 background_file = st.file_uploader(
                     "Fondo personalizado opcional",
@@ -237,25 +276,26 @@ def main() -> None:
                     """
                     <div class="helper-box">
                       <h3>Como funciona el reporte</h3>
-                      <p>1. Sube un PDF con graficos o tablas.</p>
+                      <p>1. Completa los campos clave del reporte dentro de la app.</p>
                       <p>2. La portada usa el fondo de portada integrado y permite montar cliente + mes.</p>
                       <p>3. El resto del deck usa el fondo PRenseable y el logo en la esquina superior derecha.</p>
-                      <p>4. La app extrae texto y metricas legibles y genera opinion cuantitativa.</p>
+                      <p>4. El PDF puede usarse solo como apoyo para copiar la tabla del locker.</p>
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
 
         if generate_clicked:
-            if uploaded_file is None:
+            if generator_type[0] == "plan" and uploaded_file is None:
                 st.error("Primero sube un archivo para generar la presentacion.")
                 return
 
-            temp_path = save_uploaded_file(uploaded_file)
-            temp_assets: list[Path] = [temp_path]
+            temp_path = save_uploaded_file(uploaded_file) if uploaded_file else None
+            temp_assets: list[Path] = [temp_path] if temp_path else []
             try:
                 with st.spinner("Generando presentacion..."):
                     if generator_type[0] == "plan":
+                        assert temp_path is not None
                         selected_mode = None if mode[0] == "auto" else mode[0]
                         outputs, data, detected = generate_from_file(
                             temp_path,
@@ -271,10 +311,6 @@ def main() -> None:
                                 st.write(f"- {item}")
                             st.markdown("</div>", unsafe_allow_html=True)
                     else:
-                        if temp_path.suffix.lower() != ".pdf":
-                            st.error("El modo reporte automatico necesita un PDF como fuente.")
-                            return
-
                         background_path = save_uploaded_file(background_file) if background_file else None
                         logo_path = save_uploaded_file(logo_file) if logo_file else None
                         if background_path:
@@ -282,24 +318,38 @@ def main() -> None:
                         if logo_path:
                             temp_assets.append(logo_path)
 
-                        outputs, report_data = generate_report_from_pdf(
-                            pdf_path=temp_path,
+                        outputs, manual_report = generate_report_from_manual_fields(
+                            report_title=report_title,
+                            client_name=client_name or "Cliente",
+                            report_month=report_month or "",
+                            monthly_summary=monthly_summary,
                             executive_comment=executive_comment,
                             next_steps=next_steps,
-                            report_title=report_title,
-                            client_name=client_name,
-                            report_month=report_month,
+                            tier_values={
+                                "Tier 1": int(tier_1),
+                                "Tier 2": int(tier_2),
+                                "Tier 3": int(tier_3),
+                                "Tier 4": int(tier_4),
+                            },
+                            media_values={
+                                "Digital": int(media_digital),
+                                "TV": int(media_tv),
+                                "Radio": int(media_radio),
+                                "Escrito": int(media_written),
+                            },
+                            monthly_values=[int(value) for value in monthly_values],
+                            reach_value=reach_value,
+                            valuation_value=valuation_value,
+                            table_rows_text=table_rows_text,
+                            source_path=temp_path,
                             background_path=background_path,
                             logo_path=logo_path,
                         )
-                        st.success("Listo. Se genero el reporte automatico.")
-                        if report_data.extraction_notes:
-                            for note in report_data.extraction_notes:
-                                st.info(note)
-                        if report_data.bullets:
-                            st.markdown("**Opinion cuantitativa detectada**")
-                            for bullet in report_data.bullets:
-                                st.write(f"- {bullet}")
+                        st.success("Listo. Se genero el reporte desde campos manuales.")
+                        if temp_path and temp_path.suffix.lower() == ".pdf":
+                            st.info("El PDF se uso solo como referencia opcional. Los graficos se construyeron desde los campos del formulario.")
+                        if manual_report.table_rows:
+                            st.info(f"Se cargaron {len(manual_report.table_rows)} filas en la tabla final.")
 
                 for output in outputs:
                     ppt_bytes = output.read_bytes()
