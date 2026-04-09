@@ -1,7 +1,0 @@
-{
-  "credentials_file": "C:\\Users\\dsala\\OneDrive\\Documentos\\Adobe\\strategic-ppt-generator\\client_secret.json",
-  "token_store_dir": "C:\\Users\\dsala\\OneDrive\\Documentos\\Adobe\\strategic-ppt-generator\\tokens\\google",
-  "default_sheet_range": "Datos!A:Z",
-  "default_drive_folder_id": "",
-  "default_template_presentation_id": ""
-}
