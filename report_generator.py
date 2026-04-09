@@ -22,7 +22,7 @@ DEFAULT_COVER_BACKGROUND = REPORT_ASSETS_DIR / "cover-background.png"
 DEFAULT_SLIDE_BACKGROUND = REPORT_ASSETS_DIR / "slide-background.png"
 DEFAULT_REPORT_LOGO = REPORT_ASSETS_DIR / "logo-prenseable.png"
 FONT_FAMILY = "Open Sans"
-TITLE_SIZE = 16
+TITLE_SIZE = 26
 BODY_SIZE = 12
 
 COLOR_PRIMARY = RGBColor(0xFF, 0x40, 0xB4)
@@ -32,6 +32,14 @@ COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 COLOR_DARK = RGBColor(0x23, 0x22, 0x27)
 COLOR_MUTED = RGBColor(0x6D, 0x6A, 0x73)
 COLOR_BORDER = RGBColor(0xD9, 0xD5, 0xDD)
+CHART_COLORS = [
+    RGBColor(0xFF, 0x40, 0xB4),
+    RGBColor(0xDE, 0x0A, 0x98),
+    RGBColor(0x8F, 0x6E, 0x84),
+    RGBColor(0x6F, 0x8A, 0x93),
+    RGBColor(0xE5, 0xB8, 0xD4),
+    RGBColor(0xC7, 0xD8, 0xDE),
+]
 
 MONTH_ALIASES = {
     "jan": "Ene",
@@ -346,7 +354,7 @@ def build_metrics_from_counter(items: list[str]) -> list[MetricPoint]:
             continue
         counter[key] = counter.get(key, 0) + 1
     ordered = sorted(counter.items(), key=lambda item: (-item[1], item[0].lower()))
-    return [MetricPoint(label=label, value=float(value), raw_value=str(value)) for label, value in ordered]
+    return [MetricPoint(label=label, value=int(value), raw_value=str(value)) for label, value in ordered]
 
 
 def chart_requests_from_rows(rows: list[ReportRow]) -> list[ChartRequest]:
@@ -475,10 +483,18 @@ def extract_monthly_trend(text: str) -> list[MetricPoint]:
         for metric in metrics:
             deduped[metric.label] = metric
         ordered_months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-        return [deduped[month] for month in ordered_months if month in deduped]
+        result = [deduped[month] for month in ordered_months if month in deduped]
+        if len(result) == 1:
+            placeholders = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+            only = result[0]
+            return [
+                MetricPoint(label=month, value=int(only.value) if month == only.label else 0, raw_value=str(int(only.value)) if month == only.label else "0")
+                for month in placeholders
+            ]
+        return result
 
     placeholders = [("Ene", 1), ("Feb", 2), ("Mar", 3), ("Abr", 4), ("May", 5), ("Jun", 6)]
-    return [MetricPoint(label=label, value=value, raw_value=str(value)) for label, value in placeholders]
+    return [MetricPoint(label=label, value=int(value), raw_value=str(value)) for label, value in placeholders]
 
 
 def extract_monthly_trend_from_rows(rows: list[ReportRow]) -> list[MetricPoint]:
@@ -493,7 +509,7 @@ def extract_monthly_trend_from_rows(rows: list[ReportRow]) -> list[MetricPoint]:
         month = normalize_month(parts[1]) or title_case_words(parts[1])[:3]
         counter[month] = counter.get(month, 0) + 1
     ordered_months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-    metrics = [MetricPoint(label=month, value=float(counter[month]), raw_value=str(counter[month])) for month in ordered_months if month in counter]
+    metrics = [MetricPoint(label=month, value=int(counter[month]), raw_value=str(counter[month])) for month in ordered_months if month in counter]
     return metrics or extract_monthly_trend("")
 
 
@@ -581,22 +597,6 @@ def apply_report_background(slide, background_path: Path | None) -> None:
     resolved_background = resolve_asset_path(background_path, DEFAULT_SLIDE_BACKGROUND)
     if resolved_background:
         add_picture_safe(slide, resolved_background, 0, 0, width=Inches(13.333), height=Inches(7.5))
-        top_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(7.2), Inches(0.38), Inches(4.7), Inches(0.42))
-        top_mask.fill.solid()
-        top_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
-        top_mask.line.fill.background()
-        left_bracket_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(7.0), Inches(0.31), Inches(0.18), Inches(0.58))
-        left_bracket_mask.fill.solid()
-        left_bracket_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
-        left_bracket_mask.line.fill.background()
-        right_bracket_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(11.72), Inches(0.31), Inches(0.18), Inches(0.58))
-        right_bracket_mask.fill.solid()
-        right_bracket_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
-        right_bracket_mask.line.fill.background()
-        corner_mask = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(12.14), 0, Inches(1.19), Inches(0.78))
-        corner_mask.fill.solid()
-        corner_mask.fill.fore_color.rgb = RGBColor(0x58, 0x73, 0x7C)
-        corner_mask.line.fill.background()
     else:
         top_band = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, Inches(13.333), Inches(1.0))
         top_band.fill.solid()
@@ -610,13 +610,10 @@ def apply_report_background(slide, background_path: Path | None) -> None:
 
 def add_logo_box(slide, logo_path: Path | None) -> None:
     resolved_logo = resolve_asset_path(logo_path, DEFAULT_REPORT_LOGO)
-    box = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(11.58), Inches(0.2), Inches(1.4), Inches(1.0))
-    box.fill.solid()
-    box.fill.fore_color.rgb = COLOR_WHITE
-    box.line.color.rgb = COLOR_BORDER
     if resolved_logo:
-        add_picture_safe(slide, resolved_logo, Inches(11.72), Inches(0.33), width=Inches(1.12))
+        add_picture_safe(slide, resolved_logo, Inches(11.5), Inches(0.18), width=Inches(1.35))
     else:
+        box = slide.shapes.add_textbox(Inches(11.5), Inches(0.22), Inches(1.35), Inches(0.45))
         tf = box.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         p = tf.paragraphs[0]
@@ -642,7 +639,7 @@ def add_slide_base(prs: Presentation, title: str, background_path: Path | None, 
     run.font.name = FONT_FAMILY
     run.font.bold = True
     run.font.size = Pt(TITLE_SIZE)
-    run.font.color.rgb = COLOR_DARK
+    run.font.color.rgb = COLOR_PRIMARY
     return slide
 
 
@@ -658,7 +655,7 @@ def add_text_block(slide, title: str, body: str, left, top, width, height, accen
     p.font.name = FONT_FAMILY
     p.font.bold = True
     p.font.size = Pt(TITLE_SIZE)
-    p.font.color.rgb = COLOR_DARK
+    p.font.color.rgb = COLOR_PRIMARY
     p2 = tf.add_paragraph()
     p2.text = body
     p2.font.name = FONT_FAMILY
@@ -682,7 +679,7 @@ def add_bullet_list(slide, title: str, bullets: list[str], left, top, width, hei
     p.font.name = FONT_FAMILY
     p.font.bold = True
     p.font.size = Pt(TITLE_SIZE)
-    p.font.color.rgb = COLOR_DARK
+    p.font.color.rgb = COLOR_PRIMARY
     for bullet in bullets:
         item = tf.add_paragraph()
         item.text = f"- {bullet}"
@@ -715,7 +712,7 @@ def add_metric_cards(slide, metrics: list[MetricPoint]) -> None:
         p2.text = metric.raw_value or "[sin dato]"
         p2.font.name = FONT_FAMILY
         p2.font.bold = True
-        p2.font.size = Pt(TITLE_SIZE)
+        p2.font.size = Pt(20)
         p2.font.color.rgb = COLOR_PRIMARY if index % 2 == 0 else COLOR_ACCENT
 
 
@@ -777,21 +774,30 @@ def add_distribution_chart(
     width,
     height,
 ):
+    if not metrics:
+        return
     chart_data = CategoryChartData()
     chart_data.categories = [metric.label[:24] for metric in metrics]
-    chart_data.add_series("Valor", [metric.value for metric in metrics])
+    chart_data.add_series("Valor", [int(metric.value) for metric in metrics])
     ppt_chart_type = XL_CHART_TYPE.PIE if chart_type == "pie" else XL_CHART_TYPE.COLUMN_CLUSTERED
     chart = slide.shapes.add_chart(ppt_chart_type, left, top, width, height, chart_data).chart
     chart.has_legend = True if chart_type == "pie" else False
+    chart.chart_style = 10
     if chart_type == "bar":
         chart.value_axis.has_major_gridlines = True
         chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
         chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
+        chart.category_axis.tick_labels.offset = 100
     series = chart.series[0]
     if chart_type == "bar":
         series.format.fill.solid()
         series.format.fill.fore_color.rgb = COLOR_PRIMARY
         series.format.line.color.rgb = COLOR_ACCENT
+    else:
+        for index, point in enumerate(series.points):
+            point.format.fill.solid()
+            point.format.fill.fore_color.rgb = CHART_COLORS[index % len(CHART_COLORS)]
+            point.format.line.color.rgb = COLOR_WHITE
     plot = chart.plots[0]
     plot.has_data_labels = True
     plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
@@ -882,9 +888,16 @@ def add_monthly_trend_slide(
 ) -> None:
     slide = add_slide_base(prs, "Publicaciones Mes a Mes", background_path, logo_path)
     metrics = trend_metrics[:12]
+    if len(metrics) < 12:
+        ordered = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+        current = {metric.label: metric for metric in metrics}
+        metrics = [
+            current.get(month, MetricPoint(label=month, value=0, raw_value="0"))
+            for month in ordered
+        ]
     chart_data = CategoryChartData()
     chart_data.categories = [metric.label for metric in metrics]
-    chart_data.add_series("Publicaciones", [metric.value for metric in metrics])
+    chart_data.add_series("Publicaciones", [int(metric.value) for metric in metrics])
     chart = slide.shapes.add_chart(
         XL_CHART_TYPE.LINE_MARKERS,
         Inches(0.85),
@@ -899,8 +912,12 @@ def add_monthly_trend_slide(
     chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
     series = chart.series[0]
     series.format.line.color.rgb = COLOR_PRIMARY
+    series.smooth = False
+    series.marker.style = 8
+    series.marker.size = 8
     series.marker.format.fill.solid()
     series.marker.format.fill.fore_color.rgb = COLOR_ACCENT
+    series.marker.format.line.color.rgb = COLOR_PRIMARY
 
     comments = [
         "Esta slide queda editable para mostrar la evolucion mensual de publicaciones.",
@@ -1150,18 +1167,10 @@ def generate_report_from_pdf(
 
     add_cover_slide(prs, data, background_path, logo_path)
 
-    slide_metrics = add_slide_base(prs, "Resumen de KPIs", background_path, logo_path)
-    add_metric_cards(slide_metrics, data.metrics)
-
-    slide_chart = add_slide_base(prs, "Resumen Cuantitativo Consolidado", background_path, logo_path)
-    add_metric_chart(slide_chart, data.metrics)
-
     for chart in data.requested_charts:
         add_named_chart_slide(prs, chart, background_path, logo_path)
 
     add_monthly_trend_slide(prs, data.monthly_trend, background_path, logo_path)
-
-    add_extraction_slide(prs, data, background_path, logo_path)
     add_exec_slide(prs, data, background_path, logo_path)
     add_next_steps_slide(prs, data, background_path, logo_path)
 
