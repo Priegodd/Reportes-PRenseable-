@@ -96,3 +96,22 @@ Esta es la forma mas simple para empezar sin pagar hosting.
 - El backend principal es `web_app.py`.
 - Si mas adelante quieres, se puede conectar con Google Drive para guardar automaticamente briefing y entregables.
 - Para una experiencia gratis mas simple, recomiendo subir `streamlit_app.py` a Streamlit Community Cloud.
+
+## Nuevo objetivo: Google Workspace multiusuario
+
+El modo actual con Google Drive funciona por sincronizacion de carpetas locales y sirve para un flujo simple.
+
+Si el equipo necesita que cada persona conecte su propio Google Drive, edite datos en Sheets y reciba la presentacion en Google Slides editable, la direccion correcta es el `modo pro`.
+
+Base inicial agregada:
+
+- [google_workspace.py](C:/Users/dsala/OneDrive/Documentos/Adobe/strategic-ppt-generator/google_workspace.py)
+- [google_workspace_config.example.json](C:/Users/dsala/OneDrive/Documentos/Adobe/strategic-ppt-generator/google_workspace_config.example.json)
+- [GOOGLE_WORKSPACE_MODE.md](C:/Users/dsala/OneDrive/Documentos/Adobe/strategic-ppt-generator/GOOGLE_WORKSPACE_MODE.md)
+
+Ese flujo esta pensado para:
+
+- autenticacion por usuario con Google
+- lectura de Google Sheets como fuente de datos
+- creacion de presentaciones en Google Slides
+- almacenamiento del resultado en el Drive del usuario
