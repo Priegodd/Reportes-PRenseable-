@@ -133,6 +133,22 @@ class ReportData:
     extraction_notes: list[str] = field(default_factory=list)
 
 
+@dataclass
+class ManualReportInput:
+    title: str
+    client_name: str
+    report_month: str
+    monthly_summary: str
+    executive_comment: str
+    next_steps: str
+    tier_metrics: list[MetricPoint]
+    media_metrics: list[MetricPoint]
+    monthly_trend: list[MetricPoint]
+    reach_value: str
+    valuation_value: str
+    table_rows: list[ReportRow] = field(default_factory=list)
+
+
 def clean_line(line: str) -> str:
     return re.sub(r"\s+", " ", line.replace("\uf0b7", "-")).strip()
 
@@ -381,6 +397,28 @@ def chart_requests_from_rows(rows: list[ReportRow]) -> list[ChartRequest]:
             )
         )
     return resolved
+
+
+def parse_table_rows(text: str) -> list[ReportRow]:
+    rows: list[ReportRow] = []
+    for raw_line in text.splitlines():
+        line = clean_line(raw_line)
+        if not line:
+            continue
+        parts = [part.strip() for part in line.split("|")]
+        if len(parts) < 6:
+            continue
+        rows.append(
+            ReportRow(
+                date_text=parts[0],
+                client=parts[1],
+                medium=parts[2],
+                media_type=parts[3],
+                tier=parts[4],
+                communication_type=parts[5],
+            )
+        )
+    return rows
 
 
 def parse_section_metrics(lines: list[str], alias: str) -> list[MetricPoint]:
@@ -1110,6 +1148,100 @@ def add_next_steps_slide(prs: Presentation, data: ReportData, background_path: P
     )
 
 
+def add_month_summary_slide(
+    prs: Presentation,
+    summary: str,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Breve Resumen del Mes", background_path, logo_path)
+    add_text_block(
+        slide,
+        "Resumen",
+        summary or "[Completar breve resumen del mes]",
+        Inches(0.85),
+        Inches(1.5),
+        Inches(11.55),
+        Inches(4.7),
+    )
+
+
+def add_scope_slide(
+    prs: Presentation,
+    reach_value: str,
+    valuation_value: str,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Alcance y Valorizacion", background_path, logo_path)
+    cards = [
+        ("Alcance de la gestion", reach_value or "[Completar alcance]"),
+        ("Valorizacion", valuation_value or "[Completar valorizacion]"),
+    ]
+    for index, (title, value) in enumerate(cards):
+        left = Inches(1.1 + index * 5.8)
+        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.0), Inches(5.1), Inches(2.4))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = COLOR_WHITE
+        shape.line.color.rgb = COLOR_BORDER
+        tf = shape.text_frame
+        tf.word_wrap = True
+        p = tf.paragraphs[0]
+        p.text = title
+        p.font.name = FONT_FAMILY
+        p.font.bold = True
+        p.font.size = Pt(18)
+        p.font.color.rgb = COLOR_PRIMARY
+        p2 = tf.add_paragraph()
+        p2.text = value
+        p2.font.name = FONT_FAMILY
+        p2.font.bold = True
+        p2.font.size = Pt(24)
+        p2.font.color.rgb = COLOR_DARK
+
+
+def add_results_table_slide(
+    prs: Presentation,
+    rows: list[ReportRow],
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Detalle de Resultados", background_path, logo_path)
+    headers = ["Fecha", "Cliente", "Medio", "Tipo Medio", "Tier", "Tipo"]
+    lefts = [0.55, 1.95, 3.45, 6.15, 8.15, 9.55]
+    widths = [1.25, 1.35, 2.55, 1.75, 1.15, 2.55]
+    for left, width, header in zip(lefts, widths, headers):
+        cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(1.3), Inches(width), Inches(0.48))
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = COLOR_PRIMARY
+        cell.line.fill.background()
+        tf = cell.text_frame
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        p.text = header
+        p.font.name = FONT_FAMILY
+        p.font.bold = True
+        p.font.size = Pt(11)
+        p.font.color.rgb = COLOR_WHITE
+
+    table_rows = rows[:8] if rows else [ReportRow("[Fecha]", "[Cliente]", "[Medio]", "[Tipo]", "[Tier]", "[Tipo comunicado]")]
+    for row_index, row in enumerate(table_rows):
+        top = Inches(1.8 + row_index * 0.56)
+        values = [row.date_text, row.client, row.medium, row.media_type, row.tier, row.communication_type]
+        for left, width, value in zip(lefts, widths, values):
+            cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), top, Inches(width), Inches(0.52))
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = COLOR_WHITE if row_index % 2 == 0 else COLOR_SECONDARY
+            cell.line.color.rgb = COLOR_BORDER
+            tf = cell.text_frame
+            tf.word_wrap = True
+            p = tf.paragraphs[0]
+            p.text = value
+            p.font.name = FONT_FAMILY
+            p.font.size = Pt(10)
+            p.font.color.rgb = COLOR_DARK
+
+
 def write_report_summary(
     output_path: Path,
     data: ReportData,
@@ -1137,6 +1269,129 @@ def write_report_summary(
         lines.append("- No se detectaron metricas legibles.")
     summary_path.write_text("\n".join(lines), encoding="utf-8")
     return summary_path
+
+
+def write_manual_report_summary(
+    output_path: Path,
+    manual_input: ManualReportInput,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> Path:
+    summary_path = output_path.with_suffix(".txt")
+    lines = [
+        f"Archivo generado: {output_path.name}",
+        f"Cliente: {manual_input.client_name}",
+        f"Mes: {manual_input.report_month}",
+        "",
+        "Branding aplicado:",
+        f"- Fondo personalizado: {'si' if background_path and background_path.exists() else 'no'}",
+        f"- Logo personalizado: {'si' if logo_path and logo_path.exists() else 'no'}",
+        "",
+        "Slides generadas:",
+        "- Breve resumen del mes",
+        "- Distribucion de tiers",
+        "- Distribucion de medios",
+        "- Publicaciones mes a mes",
+        "- Alcance y valorizacion",
+        "- Comentario ejecutivo",
+        "- Pasos a seguir",
+        "- Tabla de resultados",
+    ]
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
+    return summary_path
+
+
+def generate_report_from_manual_fields(
+    report_title: str,
+    client_name: str,
+    report_month: str,
+    monthly_summary: str,
+    executive_comment: str,
+    next_steps: str,
+    tier_values: dict[str, int],
+    media_values: dict[str, int],
+    monthly_values: list[int],
+    reach_value: str,
+    valuation_value: str,
+    table_rows_text: str = "",
+    source_path: Path | None = None,
+    background_path: Path | None = None,
+    logo_path: Path | None = None,
+    output_dir: Path | None = None,
+) -> tuple[list[Path], ManualReportInput]:
+    output_dir = output_dir or get_output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    tier_metrics = [MetricPoint(label=label, value=int(value), raw_value=str(int(value))) for label, value in tier_values.items()]
+    media_metrics = [MetricPoint(label=label, value=int(value), raw_value=str(int(value))) for label, value in media_values.items()]
+    month_labels = ["Mes 1", "Mes 2", "Mes 3", "Mes 4", "Mes 5", "Mes 6", "Mes 7", "Mes 8", "Mes 9", "Mes 10", "Mes 11", "Mes 12"]
+    monthly_trend = [
+        MetricPoint(label=label, value=int(value), raw_value=str(int(value)))
+        for label, value in zip(month_labels, monthly_values)
+    ]
+    manual_input = ManualReportInput(
+        title=report_title,
+        client_name=client_name,
+        report_month=report_month,
+        monthly_summary=monthly_summary,
+        executive_comment=executive_comment,
+        next_steps=next_steps,
+        tier_metrics=tier_metrics,
+        media_metrics=media_metrics,
+        monthly_trend=monthly_trend,
+        reach_value=reach_value,
+        valuation_value=valuation_value,
+        table_rows=parse_table_rows(table_rows_text),
+    )
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    cover_data = ReportData(
+        source_text="",
+        title=report_title,
+        source_name=source_path.name if source_path else "manual",
+        client_name=client_name,
+        report_month=report_month,
+    )
+    add_cover_slide(prs, cover_data, background_path, logo_path)
+    add_month_summary_slide(prs, monthly_summary, background_path, logo_path)
+
+    add_named_chart_slide(
+        prs,
+        ChartRequest(title="Distribucion de Tiers", chart_type="pie", aliases=(), metrics=tier_metrics),
+        background_path,
+        logo_path,
+    )
+    add_named_chart_slide(
+        prs,
+        ChartRequest(title="Distribucion de Medios", chart_type="pie", aliases=(), metrics=media_metrics),
+        background_path,
+        logo_path,
+    )
+    add_monthly_trend_slide(prs, monthly_trend, background_path, logo_path)
+    add_scope_slide(prs, reach_value, valuation_value, background_path, logo_path)
+
+    exec_data = ReportData(
+        source_text="",
+        title=report_title,
+        source_name=source_path.name if source_path else "manual",
+        client_name=client_name,
+        report_month=report_month,
+        executive_comment=executive_comment,
+        next_steps=next_steps,
+    )
+    add_exec_slide(prs, exec_data, background_path, logo_path)
+    add_next_steps_slide(prs, exec_data, background_path, logo_path)
+    add_results_table_slide(prs, manual_input.table_rows, background_path, logo_path)
+
+    source_stem = source_path.stem if source_path else client_name or "reporte"
+    slug = re.sub(r"[^a-z0-9_]+", "_", source_stem.lower()).strip("_") or "reporte"
+    output_path = output_dir / f"Reporte_Automatico_{slug}_{datetime.now().year}.pptx"
+    prs.save(output_path)
+    write_manual_report_summary(output_path, manual_input, background_path, logo_path)
+    return [output_path], manual_input
 
 
 def generate_report_from_pdf(
