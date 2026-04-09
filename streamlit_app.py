@@ -241,6 +241,12 @@ def main() -> None:
                     placeholder="Una fila por linea con este formato: fecha | cliente | medio | tipo medio | tier | tipo comunicado",
                     height=180,
                 )
+                table_file = st.file_uploader(
+                    "Excel o CSV para la tabla final",
+                    type=["xlsx", "csv"],
+                    help="Si subes este archivo, reemplaza el texto manual de la tabla final.",
+                    key="report_table_file",
+                )
                 background_file = st.file_uploader(
                     "Fondo personalizado opcional",
                     type=["png", "jpg", "jpeg"],
@@ -317,6 +323,9 @@ def main() -> None:
                             temp_assets.append(background_path)
                         if logo_path:
                             temp_assets.append(logo_path)
+                        table_file_path = save_uploaded_file(table_file) if table_file else None
+                        if table_file_path:
+                            temp_assets.append(table_file_path)
 
                         outputs, manual_report = generate_report_from_manual_fields(
                             report_title=report_title,
@@ -341,6 +350,7 @@ def main() -> None:
                             reach_value=reach_value,
                             valuation_value=valuation_value,
                             table_rows_text=table_rows_text,
+                            table_rows_file=table_file_path,
                             source_path=temp_path,
                             background_path=background_path,
                             logo_path=logo_path,
