@@ -87,6 +87,26 @@ class MetricPoint:
 
 
 @dataclass
+class ChartRequest:
+    title: str
+    chart_type: str
+    aliases: tuple[str, ...]
+    metrics: list[MetricPoint] = field(default_factory=list)
+    page_number: int | None = None
+    matched_alias: str = ""
+
+
+@dataclass
+class ReportRow:
+    date_text: str
+    client: str
+    medium: str
+    media_type: str
+    tier: str
+    communication_type: str
+
+
+@dataclass
 class ReportData:
     source_text: str
     title: str
@@ -95,8 +115,11 @@ class ReportData:
     report_month: str = ""
     executive_comment: str = ""
     next_steps: str = ""
+    rows: list[ReportRow] = field(default_factory=list)
     metrics: list[MetricPoint] = field(default_factory=list)
     page_metrics: list[list[MetricPoint]] = field(default_factory=list)
+    requested_charts: list[ChartRequest] = field(default_factory=list)
+    monthly_trend: list[MetricPoint] = field(default_factory=list)
     bullets: list[str] = field(default_factory=list)
     evidence: list[str] = field(default_factory=list)
     extraction_notes: list[str] = field(default_factory=list)
@@ -104,6 +127,22 @@ class ReportData:
 
 def clean_line(line: str) -> str:
     return re.sub(r"\s+", " ", line.replace("\uf0b7", "-")).strip()
+
+
+def normalize_text(value: str) -> str:
+    value = value.lower()
+    replacements = str.maketrans(
+        {
+            "á": "a",
+            "é": "e",
+            "í": "i",
+            "ó": "o",
+            "ú": "u",
+            "ñ": "n",
+        }
+    )
+    value = value.translate(replacements)
+    return re.sub(r"[^a-z0-9% ]+", " ", value)
 
 
 def safe_metric_label(label: str) -> str:
@@ -240,6 +279,224 @@ def extract_pdf_pages(pdf_path: Path) -> list[str]:
     return [(page.extract_text() or "").strip() for page in reader.pages]
 
 
+def default_chart_requests() -> list[ChartRequest]:
+    return [
+        ChartRequest(
+            title="Proporcion de Datos",
+            chart_type="pie",
+            aliases=("proporcion de datos", "proporcion de tiers", "tiers"),
+        ),
+        ChartRequest(
+            title="Proporcion Tipo de Contenido",
+            chart_type="pie",
+            aliases=("proporcion tipo de contenido", "proporcion tipo de contenid", "proporcion tipo comunicado"),
+        ),
+        ChartRequest(
+            title="Tipos de Medios",
+            chart_type="pie",
+            aliases=("tipos de medios", "tipo de medios"),
+        ),
+        ChartRequest(
+            title="Medios",
+            chart_type="bar",
+            aliases=("medios",),
+        ),
+    ]
+
+
+def title_case_words(value: str) -> str:
+    return " ".join(part.capitalize() for part in clean_line(value).split())
+
+
+def extract_report_rows(text: str) -> list[ReportRow]:
+    rows: list[ReportRow] = []
+    pattern = re.compile(
+        r"^(?P<date>\d{1,2}\s+\w+\s+\S+)\s+"
+        r"(?P<client>\S+)\s+"
+        r"(?P<medium>.+?)\s+"
+        r"(?P<media_type>Digital|Impreso|Radio|TV|Television|Televisión)\s+"
+        r"(?P<tier>Tier\s+\d+)\s+"
+        r"(?P<communication_type>.+?)\s+https?://",
+        re.IGNORECASE,
+    )
+
+    for raw_line in text.splitlines():
+        line = clean_line(raw_line)
+        match = pattern.search(line)
+        if not match:
+            continue
+        rows.append(
+            ReportRow(
+                date_text=match.group("date"),
+                client=match.group("client"),
+                medium=clean_line(match.group("medium")),
+                media_type=title_case_words(match.group("media_type")),
+                tier=title_case_words(match.group("tier")),
+                communication_type=title_case_words(match.group("communication_type")),
+            )
+        )
+    return rows
+
+
+def build_metrics_from_counter(items: list[str]) -> list[MetricPoint]:
+    counter: dict[str, int] = {}
+    for item in items:
+        key = clean_line(item)
+        if not key:
+            continue
+        counter[key] = counter.get(key, 0) + 1
+    ordered = sorted(counter.items(), key=lambda item: (-item[1], item[0].lower()))
+    return [MetricPoint(label=label, value=float(value), raw_value=str(value)) for label, value in ordered]
+
+
+def chart_requests_from_rows(rows: list[ReportRow]) -> list[ChartRequest]:
+    requests = default_chart_requests()
+    if not rows:
+        return requests
+
+    mappings = {
+        "Proporcion de Datos": build_metrics_from_counter([row.tier for row in rows]),
+        "Proporcion Tipo de Contenido": build_metrics_from_counter([row.communication_type for row in rows]),
+        "Tipos de Medios": build_metrics_from_counter([row.media_type for row in rows]),
+        "Medios": build_metrics_from_counter([row.medium for row in rows]),
+    }
+    resolved: list[ChartRequest] = []
+    for request in requests:
+        resolved.append(
+            ChartRequest(
+                title=request.title,
+                chart_type=request.chart_type,
+                aliases=request.aliases,
+                metrics=mappings.get(request.title, []),
+                page_number=1 if mappings.get(request.title) else None,
+                matched_alias=request.aliases[0],
+            )
+        )
+    return resolved
+
+
+def parse_section_metrics(lines: list[str], alias: str) -> list[MetricPoint]:
+    metrics: list[MetricPoint] = []
+    seen: set[tuple[str, str]] = set()
+    numeric_pattern = re.compile(r"([-+]?\d[\d\.,]*\s*%?)")
+    alias_norm = normalize_text(alias).strip()
+
+    for index, raw_line in enumerate(lines):
+        line = clean_line(raw_line)
+        if not line:
+            continue
+        numbers = list(numeric_pattern.finditer(line))
+        if not numbers:
+            continue
+
+        last = numbers[-1]
+        raw_value = last.group(1).strip()
+        value = parse_numeric_token(raw_value.replace("%", ""))
+        if value is None:
+            continue
+
+        prefix = clean_line(line[: last.start()].strip(" :-|"))
+        suffix = clean_line(line[last.end() :].strip(" :-|"))
+        label = prefix or suffix
+
+        if not label or normalize_text(label).strip() == alias_norm:
+            if index > 0:
+                previous = clean_line(lines[index - 1])
+                if previous and not numeric_pattern.search(previous):
+                    label = previous
+        if not label:
+            label = f"Categoria {len(metrics) + 1}"
+
+        label = safe_metric_label(label)
+        if len(label) < 2:
+            continue
+
+        fingerprint = (label.lower(), raw_value)
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        metrics.append(
+            MetricPoint(
+                label=label,
+                value=value,
+                unit=detect_unit(raw_value),
+                raw_value=raw_value,
+                context=line,
+            )
+        )
+
+    return metrics[:8]
+
+
+def extract_target_chart(page_texts: list[str], request: ChartRequest) -> ChartRequest:
+    result = ChartRequest(title=request.title, chart_type=request.chart_type, aliases=request.aliases)
+    for page_number, page_text in enumerate(page_texts, start=1):
+        lines = [line for line in page_text.splitlines() if clean_line(line)]
+        normalized_lines = [normalize_text(clean_line(line)) for line in lines]
+        for line_index, normalized_line in enumerate(normalized_lines):
+            if any(alias in normalized_line for alias in request.aliases):
+                window = lines[line_index : line_index + 14]
+                metrics = parse_section_metrics(window, request.aliases[0])
+                if metrics:
+                    result.metrics = metrics
+                result.page_number = page_number
+                result.matched_alias = request.aliases[0]
+                return result
+    return result
+
+
+def extract_monthly_trend(text: str) -> list[MetricPoint]:
+    metrics: list[MetricPoint] = []
+    lines = [clean_line(line) for line in text.splitlines() if clean_line(line)]
+    for line in lines:
+        normalized = normalize_text(line)
+        for token in normalized.split():
+            month = normalize_month(token)
+            if not month:
+                continue
+            numbers = re.findall(r"([-+]?\d[\d\.,]*)", line)
+            if not numbers:
+                continue
+            value = parse_numeric_token(numbers[-1])
+            if value is None:
+                continue
+            metrics.append(
+                MetricPoint(
+                    label=month,
+                    value=value,
+                    raw_value=numbers[-1],
+                    context=line,
+                )
+            )
+            break
+
+    if metrics:
+        deduped: dict[str, MetricPoint] = {}
+        for metric in metrics:
+            deduped[metric.label] = metric
+        ordered_months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+        return [deduped[month] for month in ordered_months if month in deduped]
+
+    placeholders = [("Ene", 1), ("Feb", 2), ("Mar", 3), ("Abr", 4), ("May", 5), ("Jun", 6)]
+    return [MetricPoint(label=label, value=value, raw_value=str(value)) for label, value in placeholders]
+
+
+def extract_monthly_trend_from_rows(rows: list[ReportRow]) -> list[MetricPoint]:
+    if not rows:
+        return extract_monthly_trend("")
+
+    counter: dict[str, int] = {}
+    for row in rows:
+        parts = row.date_text.split()
+        if len(parts) < 2:
+            continue
+        month = normalize_month(parts[1]) or title_case_words(parts[1])[:3]
+        counter[month] = counter.get(month, 0) + 1
+    ordered_months = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    metrics = [MetricPoint(label=month, value=float(counter[month]), raw_value=str(counter[month])) for month in ordered_months if month in counter]
+    return metrics or extract_monthly_trend("")
+
+
 def parse_report_pdf(
     pdf_path: Path,
     executive_comment: str = "",
@@ -250,9 +507,15 @@ def parse_report_pdf(
 ) -> ReportData:
     text = extract_text(pdf_path)
     page_texts = extract_pdf_pages(pdf_path)
+    rows = extract_report_rows(text)
     metrics = extract_candidate_metrics(text)
     page_metrics = [extract_candidate_metrics(page_text) for page_text in page_texts]
+    requested_charts = chart_requests_from_rows(rows)
+    if not any(chart.metrics for chart in requested_charts):
+        requested_charts = [extract_target_chart(page_texts, request) for request in default_chart_requests()]
+    monthly_trend = extract_monthly_trend_from_rows(rows)
     useful_pages = sum(1 for page in page_metrics if page)
+    matched_charts = sum(1 for chart in requested_charts if chart.metrics)
     extraction_notes = []
     if metrics:
         extraction_notes.append(
@@ -265,6 +528,11 @@ def parse_report_pdf(
     extraction_notes.append(
         f"Se detectaron {len(page_texts)} paginas y {useful_pages} con datos numericos reutilizables para slides individuales."
     )
+    extraction_notes.append(
+        f"Se identificaron {matched_charts} de 4 graficos objetivo para construir slides dedicadas."
+    )
+    if rows:
+        extraction_notes.append(f"Se reconstruyeron {len(rows)} publicaciones desde la tabla principal del PDF.")
 
     title = report_title or f"Reporte Automatico {datetime.now():%B %Y}"
     return ReportData(
@@ -275,8 +543,11 @@ def parse_report_pdf(
         report_month=report_month.strip(),
         executive_comment=executive_comment.strip(),
         next_steps=next_steps.strip(),
+        rows=rows,
         metrics=metrics,
         page_metrics=page_metrics,
+        requested_charts=requested_charts,
+        monthly_trend=monthly_trend,
         bullets=build_quant_bullets(metrics),
         evidence=build_evidence(text, metrics),
         extraction_notes=extraction_notes,
@@ -494,6 +765,165 @@ def add_metric_chart(slide, metrics: list[MetricPoint]) -> None:
         Inches(1.7),
         Inches(4.2),
         Inches(4.5),
+    )
+
+
+def add_distribution_chart(
+    slide,
+    metrics: list[MetricPoint],
+    chart_type: str,
+    left,
+    top,
+    width,
+    height,
+):
+    chart_data = CategoryChartData()
+    chart_data.categories = [metric.label[:24] for metric in metrics]
+    chart_data.add_series("Valor", [metric.value for metric in metrics])
+    ppt_chart_type = XL_CHART_TYPE.PIE if chart_type == "pie" else XL_CHART_TYPE.COLUMN_CLUSTERED
+    chart = slide.shapes.add_chart(ppt_chart_type, left, top, width, height, chart_data).chart
+    chart.has_legend = True if chart_type == "pie" else False
+    if chart_type == "bar":
+        chart.value_axis.has_major_gridlines = True
+        chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
+        chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    series = chart.series[0]
+    if chart_type == "bar":
+        series.format.fill.solid()
+        series.format.fill.fore_color.rgb = COLOR_PRIMARY
+        series.format.line.color.rgb = COLOR_ACCENT
+    plot = chart.plots[0]
+    plot.has_data_labels = True
+    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+
+
+def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
+    if not chart.metrics:
+        return [
+            "No se pudo reconstruir este grafico con suficiente precision desde el PDF.",
+            "Si el bloque viene como imagen, conviene complementar con OCR o carga manual de datos.",
+        ]
+    top = max(chart.metrics, key=lambda metric: metric.value)
+    comments = [f"La categoria dominante es {top.label} con {top.raw_value}."]
+    if len(chart.metrics) >= 2:
+        ordered = sorted(chart.metrics, key=lambda metric: metric.value, reverse=True)
+        second = ordered[1]
+        comments.append(f"La segunda lectura mas relevante es {second.label} con {second.raw_value}.")
+        gap = ordered[0].value - ordered[1].value
+        gap_text = f"{gap:.1f}".rstrip("0").rstrip(".")
+        suffix = ordered[0].unit if ordered[0].unit else ""
+        comments.append(f"La brecha entre ambas primeras categorias es {gap_text}{suffix}.")
+    comments.append(f"Se rescataron {len(chart.metrics)} categorias para esta visualizacion.")
+    return comments[:4]
+
+
+def add_named_chart_slide(
+    prs: Presentation,
+    chart: ChartRequest,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, chart.title, background_path, logo_path)
+    if not chart.metrics:
+        add_text_block(
+            slide,
+            "Grafico pendiente",
+            "No se pudo leer este grafico con claridad desde el PDF. La slide queda lista para que luego se reemplacen los datos manualmente si hace falta.",
+            Inches(0.85),
+            Inches(1.55),
+            Inches(11.55),
+            Inches(1.45),
+        )
+        add_bullet_list(
+            slide,
+            "Comentario cuantitativo",
+            build_chart_specific_comments(chart),
+            Inches(0.85),
+            Inches(3.25),
+            Inches(11.55),
+            Inches(2.2),
+        )
+        return
+
+    add_distribution_chart(
+        slide,
+        chart.metrics[:6],
+        chart.chart_type,
+        Inches(0.85),
+        Inches(1.55),
+        Inches(6.6),
+        Inches(4.5),
+    )
+    add_bullet_list(
+        slide,
+        "Comentario cuantitativo",
+        build_chart_specific_comments(chart),
+        Inches(7.8),
+        Inches(1.55),
+        Inches(4.65),
+        Inches(2.35),
+    )
+    add_bullet_list(
+        slide,
+        "Datos rescatados",
+        [f"{metric.label}: {metric.raw_value}" for metric in chart.metrics[:6]],
+        Inches(7.8),
+        Inches(4.1),
+        Inches(4.65),
+        Inches(1.95),
+    )
+
+
+def add_monthly_trend_slide(
+    prs: Presentation,
+    trend_metrics: list[MetricPoint],
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Publicaciones Mes a Mes", background_path, logo_path)
+    metrics = trend_metrics[:12]
+    chart_data = CategoryChartData()
+    chart_data.categories = [metric.label for metric in metrics]
+    chart_data.add_series("Publicaciones", [metric.value for metric in metrics])
+    chart = slide.shapes.add_chart(
+        XL_CHART_TYPE.LINE_MARKERS,
+        Inches(0.85),
+        Inches(1.55),
+        Inches(7.1),
+        Inches(4.45),
+        chart_data,
+    ).chart
+    chart.has_legend = False
+    chart.value_axis.has_major_gridlines = True
+    chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    series = chart.series[0]
+    series.format.line.color.rgb = COLOR_PRIMARY
+    series.marker.format.fill.solid()
+    series.marker.format.fill.fore_color.rgb = COLOR_ACCENT
+
+    comments = [
+        "Esta slide queda editable para mostrar la evolucion mensual de publicaciones.",
+        "Si el PDF trae meses legibles, el agente intenta precargarlos automaticamente.",
+        "Si algun mes no coincide, puedes editar el grafico directamente en PowerPoint.",
+    ]
+    add_bullet_list(
+        slide,
+        "Lectura de avance",
+        comments,
+        Inches(8.15),
+        Inches(1.55),
+        Inches(4.3),
+        Inches(2.4),
+    )
+    add_bullet_list(
+        slide,
+        "Datos cargados",
+        [f"{metric.label}: {metric.raw_value}" for metric in metrics],
+        Inches(8.15),
+        Inches(4.15),
+        Inches(4.3),
+        Inches(1.9),
     )
 
 
@@ -726,8 +1156,10 @@ def generate_report_from_pdf(
     slide_chart = add_slide_base(prs, "Resumen Cuantitativo Consolidado", background_path, logo_path)
     add_metric_chart(slide_chart, data.metrics)
 
-    for page_index, page_metrics in enumerate(data.page_metrics, start=1):
-        add_page_analysis_slide(prs, page_index, page_metrics, background_path, logo_path)
+    for chart in data.requested_charts:
+        add_named_chart_slide(prs, chart, background_path, logo_path)
+
+    add_monthly_trend_slide(prs, data.monthly_trend, background_path, logo_path)
 
     add_extraction_slide(prs, data, background_path, logo_path)
     add_exec_slide(prs, data, background_path, logo_path)
