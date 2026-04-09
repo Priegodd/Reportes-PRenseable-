@@ -114,6 +114,7 @@ class ReportRow:
     media_type: str
     tier: str
     communication_type: str
+    link: str = ""
 
 
 @dataclass
@@ -418,6 +419,7 @@ def parse_table_rows(text: str) -> list[ReportRow]:
                 media_type=parts[3],
                 tier=parts[4],
                 communication_type=parts[5],
+                link=parts[6] if len(parts) > 6 else "",
             )
         )
     return rows
@@ -462,6 +464,7 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
             or normalized.get("tipo contenido")
             or ""
         )
+        link = normalized.get("link") or normalized.get("enlace") or normalized.get("url") or ""
         if not any([date_text, client, medium, media_type, tier, communication_type]):
             continue
         rows.append(
@@ -472,6 +475,7 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
                 media_type=media_type,
                 tier=tier,
                 communication_type=communication_type,
+                link=link,
             )
         )
     return rows
@@ -900,16 +904,27 @@ def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
             "Si el bloque viene como imagen, conviene complementar con OCR o carga manual de datos.",
         ]
     top = max(chart.metrics, key=lambda metric: metric.value)
-    comments = [f"La categoria dominante es {top.label} con {top.raw_value}."]
+    total = sum(metric.value for metric in chart.metrics) or 1
+    use_percentages = chart.title in {"Distribucion de Tiers", "Distribucion de Medios"}
+    if use_percentages:
+        top_pct = round((top.value / total) * 100)
+        comments = [f"La categoria dominante es {top.label} con {top_pct}%."]
+    else:
+        comments = [f"La categoria dominante es {top.label} con {top.raw_value}."]
     if len(chart.metrics) >= 2:
         ordered = sorted(chart.metrics, key=lambda metric: metric.value, reverse=True)
         second = ordered[1]
-        comments.append(f"La segunda lectura mas relevante es {second.label} con {second.raw_value}.")
-        gap = ordered[0].value - ordered[1].value
-        gap_text = f"{gap:.1f}".rstrip("0").rstrip(".")
-        suffix = ordered[0].unit if ordered[0].unit else ""
-        comments.append(f"La brecha entre ambas primeras categorias es {gap_text}{suffix}.")
-    comments.append(f"Se rescataron {len(chart.metrics)} categorias para esta visualizacion.")
+        if use_percentages:
+            second_pct = round((second.value / total) * 100)
+            gap_pct = round(((ordered[0].value - ordered[1].value) / total) * 100)
+            comments.append(f"La segunda lectura mas relevante es {second.label} con {second_pct}%.")
+            comments.append(f"La brecha entre ambas primeras categorias es {gap_pct} puntos porcentuales.")
+        else:
+            comments.append(f"La segunda lectura mas relevante es {second.label} con {second.raw_value}.")
+            gap = ordered[0].value - ordered[1].value
+            gap_text = f"{gap:.1f}".rstrip("0").rstrip(".")
+            suffix = ordered[0].unit if ordered[0].unit else ""
+            comments.append(f"La brecha entre ambas primeras categorias es {gap_text}{suffix}.")
     return comments[:4]
 
 
@@ -1003,28 +1018,14 @@ def add_monthly_trend_slide(
     series = chart.series[0]
     series.format.line.color.rgb = COLOR_PRIMARY
 
-    comments = [
-        "Esta slide queda editable para mostrar la evolucion mensual de publicaciones.",
-        "Si el PDF trae meses legibles, el agente intenta precargarlos automaticamente.",
-        "Si algun mes no coincide, puedes editar el grafico directamente en PowerPoint.",
-    ]
-    add_bullet_list(
+    add_text_block(
         slide,
         "Lectura de avance",
-        comments,
+        "",
         Inches(8.15),
         Inches(1.55),
         Inches(4.3),
         Inches(2.4),
-    )
-    add_bullet_list(
-        slide,
-        "Datos cargados",
-        [f"{metric.label}: {metric.raw_value}" for metric in metrics],
-        Inches(8.15),
-        Inches(4.15),
-        Inches(4.3),
-        Inches(1.9),
     )
 
 
@@ -1093,7 +1094,7 @@ def add_page_analysis_slide(
 
 
 def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path | None, logo_path: Path | None) -> None:
-    cover_background = resolve_asset_path(background_path, DEFAULT_COVER_BACKGROUND)
+    cover_background = resolve_asset_path(None, DEFAULT_COVER_BACKGROUND)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     fill = slide.background.fill
     fill.solid()
@@ -1108,7 +1109,7 @@ def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path |
     title_run.text = data.title or "Reporte Automatico"
     title_run.font.name = FONT_FAMILY
     title_run.font.bold = True
-    title_run.font.size = Pt(20)
+    title_run.font.size = Pt(36)
     title_run.font.color.rgb = COLOR_WHITE
 
     client_box = slide.shapes.add_textbox(Inches(2.0), Inches(3.2), Inches(9.33), Inches(0.5))
@@ -1118,7 +1119,7 @@ def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path |
     run.text = data.client_name or "[Nombre del cliente]"
     run.font.name = FONT_FAMILY
     run.font.bold = True
-    run.font.size = Pt(20)
+    run.font.size = Pt(36)
     run.font.color.rgb = COLOR_WHITE
 
     month_box = slide.shapes.add_textbox(Inches(2.0), Inches(3.8), Inches(9.33), Inches(0.45))
@@ -1128,7 +1129,7 @@ def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path |
     run2.text = data.report_month or datetime.now().strftime("%B %Y")
     run2.font.name = FONT_FAMILY
     run2.font.bold = False
-    run2.font.size = Pt(20)
+    run2.font.size = Pt(36)
     run2.font.color.rgb = COLOR_WHITE
 
 
@@ -1252,9 +1253,9 @@ def add_results_table_slide(
     logo_path: Path | None,
 ) -> None:
     slide = add_slide_base(prs, "Detalle de Resultados", background_path, logo_path)
-    headers = ["Fecha", "Cliente", "Medio", "Tipo Medio", "Tier", "Tipo"]
-    lefts = [0.55, 1.95, 3.45, 6.15, 8.15, 9.55]
-    widths = [1.25, 1.35, 2.55, 1.75, 1.15, 2.55]
+    headers = ["Fecha", "Cliente", "Medio", "Tipo Medio", "Tier", "Tipo", "Link"]
+    lefts = [0.35, 1.55, 2.85, 5.15, 6.75, 7.75, 10.15]
+    widths = [1.05, 1.15, 2.15, 1.45, 0.9, 2.2, 2.35]
     for left, width, header in zip(lefts, widths, headers):
         cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(1.3), Inches(width), Inches(0.48))
         cell.fill.solid()
@@ -1269,10 +1270,10 @@ def add_results_table_slide(
         p.font.size = Pt(11)
         p.font.color.rgb = COLOR_WHITE
 
-    table_rows = rows[:8] if rows else [ReportRow("[Fecha]", "[Cliente]", "[Medio]", "[Tipo]", "[Tier]", "[Tipo comunicado]")]
+    table_rows = rows[:8] if rows else [ReportRow("[Fecha]", "[Cliente]", "[Medio]", "[Tipo]", "[Tier]", "[Tipo comunicado]", "[Link]")]
     for row_index, row in enumerate(table_rows):
         top = Inches(1.8 + row_index * 0.56)
-        values = [row.date_text, row.client, row.medium, row.media_type, row.tier, row.communication_type]
+        values = [row.date_text, row.client, row.medium, row.media_type, row.tier, row.communication_type, row.link]
         for left, width, value in zip(lefts, widths, values):
             cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), top, Inches(width), Inches(0.52))
             cell.fill.solid()
