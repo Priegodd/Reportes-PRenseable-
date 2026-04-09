@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+from openpyxl import load_workbook
 from pypdf import PdfReader
 from pptx import Presentation
 from pptx.chart.data import CategoryChartData
@@ -421,6 +423,60 @@ def parse_table_rows(text: str) -> list[ReportRow]:
     return rows
 
 
+def parse_table_file(path: Path) -> list[ReportRow]:
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        with path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            return rows_from_dicts(list(reader))
+    if suffix == ".xlsx":
+        workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
+        sheet = workbook.active
+        values = list(sheet.iter_rows(values_only=True))
+        if not values:
+            return []
+        headers = [str(value).strip() if value is not None else "" for value in values[0]]
+        entries: list[dict[str, str]] = []
+        for row in values[1:]:
+            if not any(cell is not None and str(cell).strip() for cell in row):
+                continue
+            entry = {headers[index]: ("" if index >= len(row) or row[index] is None else str(row[index]).strip()) for index in range(len(headers))}
+            entries.append(entry)
+        return rows_from_dicts(entries)
+    return []
+
+
+def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
+    rows: list[ReportRow] = []
+    for entry in entries:
+        normalized = {normalize_text(str(key)).strip(): str(value).strip() for key, value in entry.items()}
+        date_text = normalized.get("fecha") or normalized.get("date") or normalized.get("mes") or ""
+        client = normalized.get("cliente") or normalized.get("client") or ""
+        medium = normalized.get("medio") or normalized.get("media") or ""
+        media_type = normalized.get("tipo medio") or normalized.get("tipo de medio") or normalized.get("tipo_medio") or ""
+        tier = normalized.get("tier") or ""
+        communication_type = (
+            normalized.get("tipo comunicado")
+            or normalized.get("tipo de comunicado")
+            or normalized.get("tipo_comunicado")
+            or normalized.get("tipo contenido")
+            or ""
+        )
+        if not any([date_text, client, medium, media_type, tier, communication_type]):
+            continue
+        rows.append(
+            ReportRow(
+                date_text=date_text,
+                client=client,
+                medium=medium,
+                media_type=media_type,
+                tier=tier,
+                communication_type=communication_type,
+            )
+        )
+    return rows
+
+
 def parse_section_metrics(lines: list[str], alias: str) -> list[MetricPoint]:
     metrics: list[MetricPoint] = []
     seen: set[tuple[str, str]] = set()
@@ -817,35 +873,24 @@ def add_distribution_chart(
     chart_data = CategoryChartData()
     chart_data.categories = [metric.label[:24] for metric in metrics]
     chart_data.add_series("Valor", [int(metric.value) for metric in metrics])
-    ppt_chart_type = XL_CHART_TYPE.PIE if chart_type == "pie" else XL_CHART_TYPE.COLUMN_CLUSTERED
+    ppt_chart_type = XL_CHART_TYPE.COLUMN_CLUSTERED
     chart = slide.shapes.add_chart(ppt_chart_type, left, top, width, height, chart_data).chart
     chart.has_title = False
-    chart.has_legend = True if chart_type == "pie" else False
-    if chart_type == "bar":
-        chart.value_axis.has_major_gridlines = True
-        chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
-        chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
-        chart.category_axis.tick_labels.offset = 100
+    chart.has_legend = False
+    chart.value_axis.has_major_gridlines = True
+    chart.category_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    chart.value_axis.tick_labels.font.size = Pt(BODY_SIZE)
+    chart.category_axis.tick_labels.offset = 100
     series = chart.series[0]
-    if chart_type == "bar":
-        series.format.fill.solid()
-        series.format.fill.fore_color.rgb = COLOR_PRIMARY
-        series.format.line.color.rgb = COLOR_ACCENT
-    else:
-        chart.plots[0].vary_by_categories = True
-        for index, point in enumerate(series.points):
-            point.format.fill.solid()
-            point.format.fill.fore_color.rgb = CHART_COLORS[index % len(CHART_COLORS)]
-            point.format.line.color.rgb = COLOR_WHITE
+    chart.plots[0].vary_by_categories = True
+    for index, point in enumerate(series.points):
+        point.format.fill.solid()
+        point.format.fill.fore_color.rgb = CHART_COLORS[index % len(CHART_COLORS)]
+        point.format.line.color.rgb = COLOR_WHITE
     plot = chart.plots[0]
     plot.has_data_labels = True
-    if chart_type == "pie":
-        plot.data_labels.show_percentage = True
-        plot.data_labels.show_category_name = True
-        plot.data_labels.show_value = False
-    else:
-        plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
-        plot.data_labels.show_value = True
+    plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+    plot.data_labels.show_value = True
 
 
 def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
@@ -1314,6 +1359,7 @@ def generate_report_from_manual_fields(
     reach_value: str,
     valuation_value: str,
     table_rows_text: str = "",
+    table_rows_file: Path | None = None,
     source_path: Path | None = None,
     background_path: Path | None = None,
     logo_path: Path | None = None,
@@ -1341,7 +1387,7 @@ def generate_report_from_manual_fields(
         monthly_trend=monthly_trend,
         reach_value=reach_value,
         valuation_value=valuation_value,
-        table_rows=parse_table_rows(table_rows_text),
+        table_rows=parse_table_file(table_rows_file) if table_rows_file else parse_table_rows(table_rows_text),
     )
 
     prs = Presentation()
@@ -1360,13 +1406,13 @@ def generate_report_from_manual_fields(
 
     add_named_chart_slide(
         prs,
-        ChartRequest(title="Distribucion de Tiers", chart_type="pie", aliases=(), metrics=tier_metrics),
+        ChartRequest(title="Distribucion de Tiers", chart_type="bar", aliases=(), metrics=tier_metrics),
         background_path,
         logo_path,
     )
     add_named_chart_slide(
         prs,
-        ChartRequest(title="Distribucion de Medios", chart_type="pie", aliases=(), metrics=media_metrics),
+        ChartRequest(title="Distribucion de Medios", chart_type="bar", aliases=(), metrics=media_metrics),
         background_path,
         logo_path,
     )
