@@ -905,7 +905,7 @@ def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
         ]
     top = max(chart.metrics, key=lambda metric: metric.value)
     total = sum(metric.value for metric in chart.metrics) or 1
-    use_percentages = chart.title in {"Distribucion de Tiers", "Distribucion de Medios"}
+    use_percentages = chart.title in {"Distribución de Tiers", "Distribución de Medios"}
     if use_percentages:
         top_pct = round((top.value / total) * 100)
         comments = [f"La categoria dominante es {top.label} con {top_pct}%."]
@@ -1094,7 +1094,7 @@ def add_page_analysis_slide(
 
 
 def add_cover_slide(prs: Presentation, data: ReportData, background_path: Path | None, logo_path: Path | None) -> None:
-    cover_background = resolve_asset_path(None, DEFAULT_COVER_BACKGROUND)
+    cover_background = DEFAULT_COVER_BACKGROUND if DEFAULT_COVER_BACKGROUND.exists() else resolve_asset_path(None, DEFAULT_COVER_BACKGROUND)
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     fill = slide.background.fill
     fill.solid()
@@ -1219,20 +1219,22 @@ def add_scope_slide(
     background_path: Path | None,
     logo_path: Path | None,
 ) -> None:
-    slide = add_slide_base(prs, "Alcance y Valorizacion", background_path, logo_path)
+    slide = add_slide_base(prs, "Alcance y Valorización", background_path, logo_path)
     cards = [
-        ("Alcance de la gestion", reach_value or "[Completar alcance]"),
-        ("Valorizacion", valuation_value or "[Completar valorizacion]"),
+        ("Alcance de la gestión", reach_value or "[Completar alcance]"),
+        ("Valorización", valuation_value or "[Completar valorización]"),
     ]
     for index, (title, value) in enumerate(cards):
-        left = Inches(1.1 + index * 5.8)
-        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.0), Inches(5.1), Inches(2.4))
+        left = Inches(1.45 + index * 5.35)
+        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.05), Inches(4.85), Inches(2.05))
         shape.fill.solid()
         shape.fill.fore_color.rgb = COLOR_WHITE
         shape.line.color.rgb = COLOR_BORDER
         tf = shape.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         tf.word_wrap = True
         p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
         p.text = title
         p.font.name = FONT_FAMILY
         p.font.bold = True
@@ -1242,8 +1244,9 @@ def add_scope_slide(
         p2.text = value
         p2.font.name = FONT_FAMILY
         p2.font.bold = True
-        p2.font.size = Pt(24)
+        p2.font.size = Pt(22)
         p2.font.color.rgb = COLOR_DARK
+        p2.alignment = PP_ALIGN.CENTER
 
 
 def add_results_table_slide(
@@ -1254,8 +1257,8 @@ def add_results_table_slide(
 ) -> None:
     slide = add_slide_base(prs, "Detalle de Resultados", background_path, logo_path)
     headers = ["Fecha", "Cliente", "Medio", "Tipo Medio", "Tier", "Tipo", "Link"]
-    lefts = [0.35, 1.55, 2.85, 5.15, 6.75, 7.75, 10.15]
-    widths = [1.05, 1.15, 2.15, 1.45, 0.9, 2.2, 2.35]
+    lefts = [0.35, 1.5, 2.8, 5.1, 6.65, 7.55, 9.95]
+    widths = [1.0, 1.2, 2.2, 1.45, 0.85, 2.25, 2.45]
     for left, width, header in zip(lefts, widths, headers):
         cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(1.3), Inches(width), Inches(0.48))
         cell.fill.solid()
@@ -1274,18 +1277,25 @@ def add_results_table_slide(
     for row_index, row in enumerate(table_rows):
         top = Inches(1.8 + row_index * 0.56)
         values = [row.date_text, row.client, row.medium, row.media_type, row.tier, row.communication_type, row.link]
-        for left, width, value in zip(lefts, widths, values):
+        for col_index, (left, width, value) in enumerate(zip(lefts, widths, values)):
             cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), top, Inches(width), Inches(0.52))
             cell.fill.solid()
             cell.fill.fore_color.rgb = COLOR_WHITE if row_index % 2 == 0 else COLOR_SECONDARY
             cell.line.color.rgb = COLOR_BORDER
             tf = cell.text_frame
             tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
             p = tf.paragraphs[0]
-            p.text = value
+            p.alignment = PP_ALIGN.CENTER
+            p.text = "Abrir nota" if col_index == 6 and value else value
             p.font.name = FONT_FAMILY
             p.font.size = Pt(10)
-            p.font.color.rgb = COLOR_DARK
+            p.font.color.rgb = COLOR_PRIMARY if col_index == 6 and value else COLOR_DARK
+            if col_index == 6 and value and p.runs:
+                try:
+                    p.runs[0].hyperlink.address = value
+                except Exception:
+                    pass
 
 
 def write_report_summary(
@@ -1335,10 +1345,10 @@ def write_manual_report_summary(
         "",
         "Slides generadas:",
         "- Breve resumen del mes",
-        "- Distribucion de tiers",
-        "- Distribucion de medios",
+        "- Distribución de tiers",
+        "- Distribución de medios",
         "- Publicaciones mes a mes",
-        "- Alcance y valorizacion",
+        "- Alcance y valorización",
         "- Comentario ejecutivo",
         "- Pasos a seguir",
         "- Tabla de resultados",
@@ -1407,13 +1417,13 @@ def generate_report_from_manual_fields(
 
     add_named_chart_slide(
         prs,
-        ChartRequest(title="Distribucion de Tiers", chart_type="bar", aliases=(), metrics=tier_metrics),
+        ChartRequest(title="Distribución de Tiers", chart_type="bar", aliases=(), metrics=tier_metrics),
         background_path,
         logo_path,
     )
     add_named_chart_slide(
         prs,
-        ChartRequest(title="Distribucion de Medios", chart_type="bar", aliases=(), metrics=media_metrics),
+        ChartRequest(title="Distribución de Medios", chart_type="bar", aliases=(), metrics=media_metrics),
         background_path,
         logo_path,
     )
