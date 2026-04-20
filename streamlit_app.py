@@ -226,11 +226,6 @@ def main() -> None:
 
                 reach_value = st.text_input("Alcance de la gestion", value="")
                 valuation_value = st.text_input("Valorizacion", value="")
-                executive_comment = st.text_area(
-                    "Comentario ejecutivo",
-                    placeholder="Resumen de la gestion, hitos, aprendizajes y contexto del mes.",
-                    height=140,
-                )
                 next_steps = st.text_area(
                     "Pasos a seguir",
                     placeholder="Una accion por linea o separadas por punto y coma.",
@@ -332,7 +327,7 @@ def main() -> None:
                             client_name=client_name or "Cliente",
                             report_month=report_month or "",
                             monthly_summary=monthly_summary,
-                            executive_comment=executive_comment,
+                            executive_comment="",
                             next_steps=next_steps,
                             tier_values={
                                 "Tier 1": int(tier_1),
