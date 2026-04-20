@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import re
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -16,13 +17,12 @@ from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
-from generate_plan import extract_text, get_output_dir
-
 BASE_DIR = Path(__file__).resolve().parent
 REPORT_ASSETS_DIR = BASE_DIR / "assets" / "report-kit"
 DEFAULT_COVER_BACKGROUND = REPORT_ASSETS_DIR / "cover-background.png"
 DEFAULT_SLIDE_BACKGROUND = REPORT_ASSETS_DIR / "slide-background.png"
 DEFAULT_REPORT_LOGO = REPORT_ASSETS_DIR / "logo-prenseable.png"
+OUTPUT_DIR = BASE_DIR / "output"
 FONT_FAMILY = "Open Sans"
 TITLE_SIZE = 26
 BODY_SIZE = 12
@@ -42,6 +42,40 @@ CHART_COLORS = [
     RGBColor(0xE5, 0xB8, 0xD4),
     RGBColor(0xC7, 0xD8, 0xDE),
 ]
+
+
+def extract_text(path: Path) -> str:
+    suffix = path.suffix.lower()
+    try:
+        if suffix == ".txt":
+            return path.read_text(encoding="utf-8")
+        if suffix == ".pdf":
+            reader = PdfReader(str(path))
+            return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except UnicodeDecodeError as exc:
+        raise ValueError("El archivo TXT no esta en UTF-8 o no se pudo leer correctamente.") from exc
+    except Exception as exc:
+        raise ValueError(f"No se pudo leer el archivo {path.name}. Revisa que sea un {suffix} valido.") from exc
+    raise ValueError(f"Formato no soportado: {suffix}")
+
+
+def get_output_dir() -> Path:
+    candidates = [
+        OUTPUT_DIR,
+        Path(tempfile.gettempdir()) / "strategic-ppt-generator-output",
+    ]
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_test"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except OSError:
+            continue
+    fallback = Path(tempfile.mkdtemp(prefix="strategic-ppt-generator-"))
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
 
 MONTH_ALIASES = {
     "jan": "Ene",
@@ -747,6 +781,10 @@ def add_text_block(slide, title: str, body: str, left, top, width, height, accen
     shape.fill.fore_color.rgb = COLOR_WHITE
     shape.line.color.rgb = COLOR_BORDER
     tf = shape.text_frame
+    tf.margin_left = Inches(0.16)
+    tf.margin_right = Inches(0.14)
+    tf.margin_top = Inches(0.1)
+    tf.margin_bottom = Inches(0.08)
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.text = title
@@ -754,6 +792,7 @@ def add_text_block(slide, title: str, body: str, left, top, width, height, accen
     p.font.bold = True
     p.font.size = Pt(TITLE_SIZE)
     p.font.color.rgb = COLOR_PRIMARY
+    p.space_after = Pt(8)
     p2 = tf.add_paragraph()
     p2.text = body
     p2.font.name = FONT_FAMILY
@@ -771,6 +810,10 @@ def add_bullet_list(slide, title: str, bullets: list[str], left, top, width, hei
     shape.fill.fore_color.rgb = COLOR_WHITE
     shape.line.color.rgb = COLOR_BORDER
     tf = shape.text_frame
+    tf.margin_left = Inches(0.16)
+    tf.margin_right = Inches(0.14)
+    tf.margin_top = Inches(0.1)
+    tf.margin_bottom = Inches(0.08)
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.text = title
@@ -778,6 +821,7 @@ def add_bullet_list(slide, title: str, bullets: list[str], left, top, width, hei
     p.font.bold = True
     p.font.size = Pt(TITLE_SIZE)
     p.font.color.rgb = COLOR_PRIMARY
+    p.space_after = Pt(8)
     for bullet in bullets:
         item = tf.add_paragraph()
         item.text = f"- {bullet}"
@@ -785,6 +829,7 @@ def add_bullet_list(slide, title: str, bullets: list[str], left, top, width, hei
         item.font.name = FONT_FAMILY
         item.font.size = Pt(BODY_SIZE)
         item.font.color.rgb = COLOR_MUTED
+        item.space_before = Pt(2)
 
 
 def add_metric_cards(slide, metrics: list[MetricPoint]) -> None:
@@ -1225,8 +1270,8 @@ def add_scope_slide(
         ("Valorización", valuation_value or "[Completar valorización]"),
     ]
     for index, (title, value) in enumerate(cards):
-        left = Inches(1.45 + index * 5.35)
-        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, left, Inches(2.05), Inches(4.85), Inches(2.05))
+        top = Inches(1.95 + index * 2.35)
+        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(1.15), top, Inches(4.75), Inches(1.8))
         shape.fill.solid()
         shape.fill.fore_color.rgb = COLOR_WHITE
         shape.line.color.rgb = COLOR_BORDER
@@ -1349,7 +1394,6 @@ def write_manual_report_summary(
         "- Distribución de medios",
         "- Publicaciones mes a mes",
         "- Alcance y valorización",
-        "- Comentario ejecutivo",
         "- Pasos a seguir",
         "- Tabla de resultados",
     ]
@@ -1439,7 +1483,6 @@ def generate_report_from_manual_fields(
         executive_comment=executive_comment,
         next_steps=next_steps,
     )
-    add_exec_slide(prs, exec_data, background_path, logo_path)
     add_next_steps_slide(prs, exec_data, background_path, logo_path)
     add_results_table_slide(prs, manual_input.table_rows, background_path, logo_path)
 
