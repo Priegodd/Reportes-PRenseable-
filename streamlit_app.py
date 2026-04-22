@@ -233,7 +233,7 @@ def main() -> None:
                 )
                 table_rows_text = st.text_area(
                     "Tabla final de resultados",
-                    placeholder="Una fila por linea con este formato: fecha | cliente | medio | tipo medio | tier | tipo comunicado",
+                    placeholder="Una fila por linea con este formato: fecha | medio | tier | tipo medio | valorizacion | alcance | link",
                     height=180,
                 )
                 table_file = st.file_uploader(
