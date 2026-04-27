@@ -1,10 +1,11 @@
+
 from __future__ import annotations
 
 import csv
 import re
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from openpyxl import load_workbook
@@ -467,19 +468,70 @@ def parse_table_file(path: Path) -> list[ReportRow]:
             return rows_from_dicts(list(reader))
     if suffix == ".xlsx":
         workbook = load_workbook(filename=str(path), read_only=True, data_only=True)
-        sheet = workbook.active
-        values = list(sheet.iter_rows(values_only=True))
-        if not values:
-            return []
-        headers = [str(value).strip() if value is not None else "" for value in values[0]]
-        entries: list[dict[str, str]] = []
-        for row in values[1:]:
-            if not any(cell is not None and str(cell).strip() for cell in row):
+        all_rows: list[ReportRow] = []
+        for sheet in workbook.worksheets:
+            values = list(sheet.iter_rows(values_only=True))
+            if not values:
                 continue
-            entry = {headers[index]: ("" if index >= len(row) or row[index] is None else str(row[index]).strip()) for index in range(len(headers))}
-            entries.append(entry)
-        return rows_from_dicts(entries)
+            entries = dict_entries_from_worksheet(values)
+            parsed_rows = rows_from_dicts(entries)
+            if parsed_rows:
+                all_rows.extend(parsed_rows)
+        return all_rows
     return []
+
+
+def dict_entries_from_worksheet(values: list[tuple]) -> list[dict[str, str]]:
+    header_index = 0
+    best_score = -1
+    for index, row in enumerate(values[:10]):
+        headers = [normalize_text("" if value is None else str(value)).strip() for value in row]
+        score = sum(
+            1
+            for header in headers
+            if header in {
+                "fecha",
+                "date",
+                "medio",
+                "media",
+                "tier",
+                "tipo medio",
+                "tipo de medio",
+                "valorizacion",
+                "valorizacion estimada",
+                "alcance",
+                "alcance estimado",
+                "link",
+                "enlace",
+                "url",
+            }
+        )
+        if score > best_score:
+            best_score = score
+            header_index = index
+
+    headers = [str(value).strip() if value is not None else "" for value in values[header_index]]
+    entries: list[dict[str, str]] = []
+    for row in values[header_index + 1 :]:
+        if not any(cell is not None and str(cell).strip() for cell in row):
+            continue
+        entry = {
+            headers[index] if index < len(headers) and headers[index] else f"col_{index+1}":
+            ("" if index >= len(row) or row[index] is None else str(row[index]).strip())
+            for index in range(max(len(headers), len(row)))
+        }
+        entries.append(entry)
+    return entries
+
+
+def normalize_excel_date(value: str) -> str:
+    text = str(value).strip()
+    if re.fullmatch(r"\d+(?:\.0+)?", text):
+        serial = int(float(text))
+        if 20000 < serial < 60000:
+            base_date = datetime(1899, 12, 30) + timedelta(days=serial)
+            return base_date.strftime("%Y-%m-%d")
+    return text
 
 
 def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
@@ -502,7 +554,15 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
 
         if not any([date_text, medium, media_type, tier, valuation, reach, link]):
             ordered_values = [str(value).strip() for value in entry.values() if str(value).strip()]
-            if len(ordered_values) >= 7:
+            if len(ordered_values) >= 8:
+                date_text = ordered_values[0]
+                medium = ordered_values[1]
+                media_type = ordered_values[2]
+                tier = ordered_values[4]
+                link = ordered_values[5]
+                reach = ordered_values[6]
+                valuation = ordered_values[7]
+            elif len(ordered_values) >= 7:
                 date_text = ordered_values[0]
                 medium = ordered_values[1]
                 tier = ordered_values[2]
@@ -516,12 +576,12 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
 
         rows.append(
             ReportRow(
-                date_text=date_text,
+                date_text=normalize_excel_date(date_text),
                 medium=medium,
                 media_type=media_type,
                 tier=tier,
-                valuation=valuation,
-                reach=reach,
+                valuation=normalize_excel_date(valuation),
+                reach=normalize_excel_date(reach),
                 link=link,
             )
         )
