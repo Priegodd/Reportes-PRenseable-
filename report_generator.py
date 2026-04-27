@@ -490,11 +490,30 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
         medium = normalized.get("medio") or normalized.get("media") or ""
         media_type = normalized.get("tipo medio") or normalized.get("tipo de medio") or normalized.get("tipo_medio") or ""
         tier = normalized.get("tier") or ""
-        valuation = normalized.get("valorizacion") or normalized.get("valorización") or normalized.get("valor estimado") or normalized.get("valor_estimado") or ""
+        valuation = (
+            normalized.get("valorizacion")
+            or normalized.get("valorización")
+            or normalized.get("valor estimado")
+            or normalized.get("valor_estimado")
+            or ""
+        )
         reach = normalized.get("alcance") or normalized.get("alcance estimado") or normalized.get("alcance_estimado") or ""
         link = normalized.get("link") or normalized.get("enlace") or normalized.get("url") or ""
+
+        if not any([date_text, medium, media_type, tier, valuation, reach, link]):
+            ordered_values = [str(value).strip() for value in entry.values() if str(value).strip()]
+            if len(ordered_values) >= 7:
+                date_text = ordered_values[0]
+                medium = ordered_values[1]
+                tier = ordered_values[2]
+                media_type = ordered_values[3]
+                valuation = ordered_values[4]
+                reach = ordered_values[5]
+                link = ordered_values[6]
+
         if not any([date_text, medium, media_type, tier, valuation, reach, link]):
             continue
+
         rows.append(
             ReportRow(
                 date_text=date_text,
@@ -1294,47 +1313,52 @@ def add_results_table_slide(
     background_path: Path | None,
     logo_path: Path | None,
 ) -> None:
-    slide = add_slide_base(prs, "Detalle de Resultados", background_path, logo_path)
     headers = ["Fecha", "Medio", "Tier", "Tipo Medio", "Valorización", "Alcance", "Link"]
     lefts = [0.35, 1.75, 4.55, 5.75, 7.25, 9.0, 10.75]
     widths = [1.3, 2.65, 1.0, 1.35, 1.6, 1.5, 1.75]
-    for left, width, header in zip(lefts, widths, headers):
-        cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(1.3), Inches(width), Inches(0.48))
-        cell.fill.solid()
-        cell.fill.fore_color.rgb = COLOR_PRIMARY
-        cell.line.fill.background()
-        tf = cell.text_frame
-        p = tf.paragraphs[0]
-        p.alignment = PP_ALIGN.CENTER
-        p.text = header
-        p.font.name = FONT_FAMILY
-        p.font.bold = True
-        p.font.size = Pt(11)
-        p.font.color.rgb = COLOR_WHITE
+    rows_per_slide = 8
+    table_rows = rows or [ReportRow("[Fecha]", "[Medio]", "[Tipo]", "[Tier]", "[Valorización]", "[Alcance]", "[Link]")]
 
-    table_rows = rows[:8] if rows else [ReportRow("[Fecha]", "[Medio]", "[Tipo]", "[Tier]", "[Valorización]", "[Alcance]", "[Link]")]
-    for row_index, row in enumerate(table_rows):
-        top = Inches(1.8 + row_index * 0.56)
-        values = [row.date_text, row.medium, row.tier, row.media_type, row.valuation, row.reach, row.link]
-        for col_index, (left, width, value) in enumerate(zip(lefts, widths, values)):
-            cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), top, Inches(width), Inches(0.52))
+    for chunk_index, start in enumerate(range(0, len(table_rows), rows_per_slide), start=1):
+        slide_title = "Detalle de Resultados" if chunk_index == 1 else f"Detalle de Resultados ({chunk_index})"
+        slide = add_slide_base(prs, slide_title, background_path, logo_path)
+        for left, width, header in zip(lefts, widths, headers):
+            cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), Inches(1.3), Inches(width), Inches(0.48))
             cell.fill.solid()
-            cell.fill.fore_color.rgb = COLOR_WHITE if row_index % 2 == 0 else COLOR_SECONDARY
-            cell.line.color.rgb = COLOR_BORDER
+            cell.fill.fore_color.rgb = COLOR_PRIMARY
+            cell.line.fill.background()
             tf = cell.text_frame
-            tf.word_wrap = True
-            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
             p = tf.paragraphs[0]
             p.alignment = PP_ALIGN.CENTER
-            p.text = "Abrir nota" if col_index == 6 and value else value
+            p.text = header
             p.font.name = FONT_FAMILY
-            p.font.size = Pt(10)
-            p.font.color.rgb = COLOR_PRIMARY if col_index == 6 and value else COLOR_DARK
-            if col_index == 6 and value and p.runs:
-                try:
-                    p.runs[0].hyperlink.address = value
-                except Exception:
-                    pass
+            p.font.bold = True
+            p.font.size = Pt(11)
+            p.font.color.rgb = COLOR_WHITE
+
+        chunk = table_rows[start : start + rows_per_slide]
+        for row_index, row in enumerate(chunk):
+            top = Inches(1.8 + row_index * 0.56)
+            values = [row.date_text, row.medium, row.tier, row.media_type, row.valuation, row.reach, row.link]
+            for col_index, (left, width, value) in enumerate(zip(lefts, widths, values)):
+                cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, Inches(left), top, Inches(width), Inches(0.52))
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = COLOR_WHITE if row_index % 2 == 0 else COLOR_SECONDARY
+                cell.line.color.rgb = COLOR_BORDER
+                tf = cell.text_frame
+                tf.word_wrap = True
+                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                p = tf.paragraphs[0]
+                p.alignment = PP_ALIGN.CENTER
+                p.text = "Abrir nota" if col_index == 6 and value else value
+                p.font.name = FONT_FAMILY
+                p.font.size = Pt(10)
+                p.font.color.rgb = COLOR_PRIMARY if col_index == 6 and value else COLOR_DARK
+                if col_index == 6 and value and p.runs:
+                    try:
+                        p.runs[0].hyperlink.address = value
+                    except Exception:
+                        pass
 
 
 def write_report_summary(
