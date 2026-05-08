@@ -156,6 +156,8 @@ class ReportRow:
     medium: str
     media_type: str
     tier: str
+    communication_type: str = ""
+    client: str = ""
     valuation: str = ""
     reach: str = ""
     link: str = ""
@@ -1872,6 +1874,143 @@ def generate_report_from_manual_fields(
     prs.save(output_path)
     write_manual_report_summary(output_path, manual_input, background_path, logo_path)
     return [output_path], manual_input
+
+
+def extract_report_rows(text: str) -> list[ReportRow]:
+    rows: list[ReportRow] = []
+    lines = [clean_line(raw_line) for raw_line in text.splitlines() if clean_line(raw_line)]
+    in_table = False
+    media_type_tokens = {"digital", "escrito", "radio", "tv", "television", "televisión"}
+
+    for line in lines:
+        normalized = normalize_text(line)
+        if normalized.startswith("fecha cliente medio tipo de medio tier"):
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if normalized.startswith("1 11 11") or normalized.startswith("proporcion de tiers"):
+            break
+        if normalized in {"<", ">", "v"}:
+            continue
+
+        parts = line.split()
+        if len(parts) < 8:
+            continue
+
+        media_type_index = None
+        for index in range(4, len(parts)):
+            if normalize_text(parts[index]).strip() in media_type_tokens:
+                media_type_index = index
+                break
+        if media_type_index is None or media_type_index + 2 >= len(parts):
+            continue
+
+        link_index = next((index for index, token in enumerate(parts) if token.startswith("http")), None)
+        if link_index is None:
+            continue
+
+        date_text = " ".join(parts[:3])
+        client = parts[3]
+        medium = clean_line(" ".join(parts[4:media_type_index]))
+        media_type = title_case_words(parts[media_type_index])
+        tier = clean_line(" ".join(parts[media_type_index + 1 : media_type_index + 3]))
+        communication_type = clean_line(" ".join(parts[media_type_index + 3 : link_index]))
+        trailing = parts[link_index + 1 :]
+        valuation = trailing[0] if len(trailing) >= 1 and trailing[0].lower() != "null" else ""
+        reach = trailing[1] if len(trailing) >= 2 and trailing[1].lower() != "null" else ""
+
+        rows.append(
+            ReportRow(
+                date_text=date_text,
+                medium=medium,
+                media_type=title_case_words(media_type),
+                tier=title_case_words(tier),
+                communication_type=title_case_words(communication_type),
+                client=client,
+                valuation=normalize_numeric_text(valuation),
+                reach=normalize_numeric_text(reach),
+                link=parts[link_index],
+            )
+        )
+    return rows
+
+
+def extract_pdf_kpis(text: str) -> dict[str, str]:
+    lines = [clean_line(raw_line) for raw_line in text.splitlines() if clean_line(raw_line)]
+    kpis = {"reach": "", "valuation": "", "client_name": "", "publication_count": ""}
+    for index, line in enumerate(lines):
+        normalized = normalize_text(line)
+        if normalized == "alcance estimado" and index + 1 < len(lines):
+            kpis["reach"] = normalize_numeric_text(lines[index + 1])
+        elif normalized == "valor estimado" and index + 1 < len(lines):
+            kpis["valuation"] = normalize_numeric_text(lines[index + 1])
+        elif normalized == "cantidad de publicaciones" and index + 1 < len(lines) and not kpis["publication_count"]:
+            kpis["publication_count"] = normalize_numeric_text(lines[index + 1])
+        elif normalized == "cliente 1" and index + 1 < len(lines):
+            client_line = lines[index + 1].replace(":", " ").strip()
+            kpis["client_name"] = clean_line(client_line.replace(" ", ""))
+    return kpis
+
+
+def parse_report_pdf(
+    pdf_path: Path,
+    executive_comment: str = "",
+    next_steps: str = "",
+    report_title: str | None = None,
+    client_name: str = "",
+    report_month: str = "",
+) -> ReportData:
+    text = extract_text(pdf_path)
+    page_texts = extract_pdf_pages(pdf_path)
+    rows = extract_report_rows(text)
+    pdf_kpis = extract_pdf_kpis(text)
+    metrics = extract_candidate_metrics(text)
+    page_metrics = [extract_candidate_metrics(page_text) for page_text in page_texts]
+    requested_charts = chart_requests_from_rows(rows)
+    if not any(chart.metrics for chart in requested_charts):
+        requested_charts = [extract_target_chart(page_texts, request) for request in default_chart_requests()]
+    monthly_trend = extract_monthly_trend_from_rows(rows)
+    useful_pages = sum(1 for page in page_metrics if page)
+    matched_charts = sum(1 for chart in requested_charts if chart.metrics)
+
+    extraction_notes = []
+    extraction_notes.append(f"Se detectaron {len(page_texts)} páginas en el PDF.")
+    if rows:
+        extraction_notes.append(f"Se reconstruyeron {len(rows)} publicaciones desde la tabla principal del PDF.")
+    if pdf_kpis["publication_count"]:
+        extraction_notes.append(f"El PDF informa {pdf_kpis['publication_count']} publicaciones totales.")
+    if pdf_kpis["reach"]:
+        extraction_notes.append(f"Se detectó un alcance estimado de {pdf_kpis['reach']}.")
+    if pdf_kpis["valuation"]:
+        extraction_notes.append(f"Se detectó una valorización estimada de {pdf_kpis['valuation']}.")
+    extraction_notes.append(f"Se identificaron {matched_charts} de 4 gráficos objetivo para construir slides dedicadas.")
+    extraction_notes.append(f"Se encontraron {useful_pages} páginas con texto numérico reutilizable.")
+
+    if pdf_kpis["reach"]:
+        metrics.append(MetricPoint(label="Alcance estimado", value=parse_numeric_token(pdf_kpis["reach"].replace(".", "")) or 0, raw_value=pdf_kpis["reach"]))
+    if pdf_kpis["valuation"]:
+        metrics.append(MetricPoint(label="Valor estimado", value=parse_numeric_token(pdf_kpis["valuation"].replace(".", "")) or 0, raw_value=pdf_kpis["valuation"]))
+
+    resolved_client = client_name.strip() or pdf_kpis["client_name"] or (rows[0].client if rows and rows[0].client else "")
+    title = report_title or f"Reporte Automatico {datetime.now():%B %Y}"
+    return ReportData(
+        source_text=text,
+        title=title,
+        source_name=pdf_path.name,
+        client_name=resolved_client,
+        report_month=report_month.strip(),
+        executive_comment=executive_comment.strip(),
+        next_steps=next_steps.strip(),
+        rows=rows,
+        metrics=metrics,
+        page_metrics=page_metrics,
+        requested_charts=requested_charts,
+        monthly_trend=monthly_trend,
+        bullets=build_quant_bullets(metrics),
+        evidence=build_evidence(text, metrics),
+        extraction_notes=extraction_notes,
+    )
 
 
 def generate_report_from_pdf(
