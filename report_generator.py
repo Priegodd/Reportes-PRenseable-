@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import csv
@@ -534,6 +533,15 @@ def normalize_excel_date(value: str) -> str:
     return text
 
 
+def normalize_numeric_text(value: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    if re.fullmatch(r"\d+(?:\.0+)?", text):
+        return f"{int(float(text)):,}".replace(",", ".")
+    return text
+
+
 def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
     rows: list[ReportRow] = []
     for entry in entries:
@@ -580,8 +588,8 @@ def rows_from_dicts(entries: list[dict[str, str]]) -> list[ReportRow]:
                 medium=medium,
                 media_type=media_type,
                 tier=tier,
-                valuation=normalize_excel_date(valuation),
-                reach=normalize_excel_date(reach),
+                valuation=normalize_numeric_text(valuation),
+                reach=normalize_numeric_text(reach),
                 link=link,
             )
         )
