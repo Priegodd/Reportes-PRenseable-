@@ -26,22 +26,32 @@ OUTPUT_DIR = BASE_DIR / "output"
 FONT_FAMILY = "Open Sans"
 TITLE_SIZE = 26
 BODY_SIZE = 12
+CARD_TITLE_SIZE = 16
+CARD_BODY_SIZE = 11
+KPI_VALUE_SIZE = 24
 
 COLOR_PRIMARY = RGBColor(0xFF, 0x40, 0xB4)
 COLOR_SECONDARY = RGBColor(0xEC, 0xEC, 0xEC)
-COLOR_ACCENT = RGBColor(0xDE, 0x0A, 0x98)
+COLOR_ACCENT = RGBColor(0xFF, 0x40, 0xB4)
 COLOR_WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 COLOR_DARK = RGBColor(0x23, 0x22, 0x27)
 COLOR_MUTED = RGBColor(0x6D, 0x6A, 0x73)
-COLOR_BORDER = RGBColor(0xD9, 0xD5, 0xDD)
+COLOR_BORDER = RGBColor(0xEC, 0xEC, 0xEC)
 CHART_COLORS = [
     RGBColor(0xFF, 0x40, 0xB4),
-    RGBColor(0xDE, 0x0A, 0x98),
-    RGBColor(0x8F, 0x6E, 0x84),
-    RGBColor(0x6F, 0x8A, 0x93),
-    RGBColor(0xE5, 0xB8, 0xD4),
-    RGBColor(0xC7, 0xD8, 0xDE),
+    RGBColor(0xEC, 0xEC, 0xEC),
+    RGBColor(0xFF, 0x40, 0xB4),
+    RGBColor(0xEC, 0xEC, 0xEC),
+    RGBColor(0xFF, 0x40, 0xB4),
+    RGBColor(0xEC, 0xEC, 0xEC),
 ]
+
+SLIDE_WIDTH = Inches(13.333)
+SLIDE_HEIGHT = Inches(7.5)
+CONTENT_LEFT = Inches(0.62)
+CONTENT_TOP = Inches(0.48)
+CONTENT_WIDTH = Inches(12.05)
+CONTENT_HEIGHT = Inches(6.55)
 
 
 def extract_text(path: Path) -> str:
@@ -809,9 +819,9 @@ def apply_report_background(slide, background_path: Path | None) -> None:
 
     resolved_background = resolve_asset_path(background_path, DEFAULT_SLIDE_BACKGROUND)
     if resolved_background:
-        add_picture_safe(slide, resolved_background, 0, 0, width=Inches(13.333), height=Inches(7.5))
+        add_picture_safe(slide, resolved_background, 0, 0, width=SLIDE_WIDTH, height=SLIDE_HEIGHT)
     else:
-        top_band = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, Inches(13.333), Inches(1.0))
+        top_band = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, 0, 0, SLIDE_WIDTH, Inches(1.0))
         top_band.fill.solid()
         top_band.fill.fore_color.rgb = COLOR_PRIMARY
         top_band.line.fill.background()
@@ -821,12 +831,26 @@ def apply_report_background(slide, background_path: Path | None) -> None:
         accent.line.fill.background()
 
 
+def add_content_canvas(slide) -> None:
+    canvas = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE,
+        CONTENT_LEFT,
+        CONTENT_TOP,
+        CONTENT_WIDTH,
+        CONTENT_HEIGHT,
+    )
+    canvas.fill.solid()
+    canvas.fill.fore_color.rgb = COLOR_WHITE
+    canvas.fill.transparency = 0.08
+    canvas.line.color.rgb = COLOR_BORDER
+
+
 def add_logo_box(slide, logo_path: Path | None) -> None:
     resolved_logo = resolve_asset_path(logo_path, DEFAULT_REPORT_LOGO)
     if resolved_logo:
-        add_picture_safe(slide, resolved_logo, Inches(11.5), Inches(0.18), width=Inches(1.35))
+        add_picture_safe(slide, resolved_logo, Inches(10.95), Inches(0.18), width=Inches(1.55))
     else:
-        box = slide.shapes.add_textbox(Inches(11.5), Inches(0.22), Inches(1.35), Inches(0.45))
+        box = slide.shapes.add_textbox(Inches(10.95), Inches(0.22), Inches(1.55), Inches(0.45))
         tf = box.text_frame
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         p = tf.paragraphs[0]
@@ -842,10 +866,27 @@ def add_logo_box(slide, logo_path: Path | None) -> None:
 def add_slide_base(prs: Presentation, title: str, background_path: Path | None, logo_path: Path | None):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     apply_report_background(slide, background_path)
+    add_content_canvas(slide)
     add_logo_box(slide, logo_path)
 
-    title_box = slide.shapes.add_textbox(Inches(0.7), Inches(0.28), Inches(9.8), Inches(0.6))
-    p = title_box.text_frame.paragraphs[0]
+    accent = slide.shapes.add_shape(
+        MSO_AUTO_SHAPE_TYPE.RECTANGLE,
+        Inches(1.12),
+        Inches(0.9),
+        Inches(1.15),
+        Inches(0.05),
+    )
+    accent.fill.solid()
+    accent.fill.fore_color.rgb = COLOR_PRIMARY
+    accent.line.fill.background()
+
+    title_box = slide.shapes.add_textbox(Inches(1.12), Inches(0.72), Inches(8.9), Inches(0.55))
+    tf = title_box.text_frame
+    tf.margin_left = 0
+    tf.margin_right = 0
+    tf.margin_top = 0
+    tf.margin_bottom = 0
+    p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.LEFT
     run = p.add_run()
     run.text = title
@@ -862,24 +903,26 @@ def add_text_block(slide, title: str, body: str, left, top, width, height, accen
     shape.fill.fore_color.rgb = COLOR_WHITE
     shape.line.color.rgb = COLOR_BORDER
     tf = shape.text_frame
-    tf.margin_left = Inches(0.16)
-    tf.margin_right = Inches(0.14)
-    tf.margin_top = Inches(0.1)
-    tf.margin_bottom = Inches(0.08)
+    tf.margin_left = Inches(0.22)
+    tf.margin_right = Inches(0.22)
+    tf.margin_top = Inches(0.18)
+    tf.margin_bottom = Inches(0.16)
     tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.TOP
     p = tf.paragraphs[0]
     p.text = title
     p.font.name = FONT_FAMILY
     p.font.bold = True
-    p.font.size = Pt(TITLE_SIZE)
+    p.font.size = Pt(CARD_TITLE_SIZE)
     p.font.color.rgb = COLOR_PRIMARY
-    p.space_after = Pt(8)
+    p.space_after = Pt(12)
     p2 = tf.add_paragraph()
     p2.text = body
     p2.font.name = FONT_FAMILY
     p2.font.size = Pt(BODY_SIZE)
     p2.font.color.rgb = COLOR_MUTED
-    accent = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, left, top, Inches(0.14), height)
+    p2.space_before = Pt(2)
+    accent = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.RECTANGLE, left, top, Inches(0.1), height)
     accent.fill.solid()
     accent.fill.fore_color.rgb = accent_color
     accent.line.fill.background()
@@ -891,26 +934,28 @@ def add_bullet_list(slide, title: str, bullets: list[str], left, top, width, hei
     shape.fill.fore_color.rgb = COLOR_WHITE
     shape.line.color.rgb = COLOR_BORDER
     tf = shape.text_frame
-    tf.margin_left = Inches(0.16)
-    tf.margin_right = Inches(0.14)
-    tf.margin_top = Inches(0.1)
-    tf.margin_bottom = Inches(0.08)
+    tf.margin_left = Inches(0.22)
+    tf.margin_right = Inches(0.22)
+    tf.margin_top = Inches(0.18)
+    tf.margin_bottom = Inches(0.16)
     tf.word_wrap = True
+    tf.vertical_anchor = MSO_ANCHOR.TOP
     p = tf.paragraphs[0]
     p.text = title
     p.font.name = FONT_FAMILY
     p.font.bold = True
-    p.font.size = Pt(TITLE_SIZE)
+    p.font.size = Pt(CARD_TITLE_SIZE)
     p.font.color.rgb = COLOR_PRIMARY
-    p.space_after = Pt(8)
+    p.space_after = Pt(12)
     for bullet in bullets:
         item = tf.add_paragraph()
         item.text = f"- {bullet}"
         item.level = 0
         item.font.name = FONT_FAMILY
-        item.font.size = Pt(BODY_SIZE)
+        item.font.size = Pt(CARD_BODY_SIZE)
         item.font.color.rgb = COLOR_MUTED
         item.space_before = Pt(2)
+        item.space_after = Pt(4)
 
 
 def add_metric_cards(slide, metrics: list[MetricPoint]) -> None:
@@ -1064,21 +1109,21 @@ def add_named_chart_slide(
     if not chart.metrics:
         add_text_block(
             slide,
-            "Grafico pendiente",
-            "No se pudo leer este grafico con claridad desde el PDF. La slide queda lista para que luego se reemplacen los datos manualmente si hace falta.",
-            Inches(0.85),
-            Inches(1.55),
-            Inches(11.55),
+            "Gráfico pendiente",
+            "No se pudo leer este gráfico con claridad desde el PDF. La slide queda lista para reemplazar los datos manualmente si hace falta.",
+            Inches(1.1),
+            Inches(1.5),
+            Inches(10.95),
             Inches(1.45),
         )
         add_bullet_list(
             slide,
             "Comentario cuantitativo",
             build_chart_specific_comments(chart),
-            Inches(0.85),
-            Inches(3.25),
-            Inches(11.55),
-            Inches(2.2),
+            Inches(1.1),
+            Inches(3.15),
+            Inches(10.95),
+            Inches(2.3),
         )
         return
 
@@ -1086,28 +1131,28 @@ def add_named_chart_slide(
         slide,
         chart.metrics[:6],
         chart.chart_type,
-        Inches(0.85),
-        Inches(1.55),
-        Inches(6.6),
-        Inches(4.5),
+        Inches(1.1),
+        Inches(1.52),
+        Inches(6.85),
+        Inches(4.68),
     )
     add_bullet_list(
         slide,
         "Comentario cuantitativo",
         build_chart_specific_comments(chart),
-        Inches(7.8),
-        Inches(1.55),
-        Inches(4.65),
-        Inches(2.35),
+        Inches(8.25),
+        Inches(1.52),
+        Inches(3.95),
+        Inches(2.45),
     )
     add_bullet_list(
         slide,
         "Datos rescatados",
         [f"{metric.label}: {metric.raw_value}" for metric in chart.metrics[:6]],
-        Inches(7.8),
-        Inches(4.1),
-        Inches(4.65),
-        Inches(1.95),
+        Inches(8.25),
+        Inches(4.18),
+        Inches(3.95),
+        Inches(1.82),
     )
 
 
@@ -1117,7 +1162,7 @@ def add_monthly_trend_slide(
     background_path: Path | None,
     logo_path: Path | None,
 ) -> None:
-    slide = add_slide_base(prs, "Publicaciones Mes a Mes", background_path, logo_path)
+    slide = add_slide_base(prs, "Publicaciones mes a mes", background_path, logo_path)
     metrics = trend_metrics[:12]
     if len(metrics) < 12:
         ordered = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
@@ -1131,10 +1176,10 @@ def add_monthly_trend_slide(
     chart_data.add_series("Publicaciones", [int(metric.value) for metric in metrics])
     chart = slide.shapes.add_chart(
         XL_CHART_TYPE.LINE,
-        Inches(0.85),
+        Inches(1.1),
         Inches(1.55),
-        Inches(7.1),
-        Inches(4.45),
+        Inches(6.95),
+        Inches(4.5),
         chart_data,
     ).chart
     chart.has_legend = False
@@ -1148,10 +1193,10 @@ def add_monthly_trend_slide(
         slide,
         "Lectura de avance",
         "",
-        Inches(8.15),
+        Inches(8.3),
         Inches(1.55),
-        Inches(4.3),
-        Inches(2.4),
+        Inches(3.9),
+        Inches(4.5),
     )
 
 
@@ -1429,6 +1474,221 @@ def add_results_table_slide(
                         pass
 
 
+def metric_value_for_sort(value: str) -> float:
+    current = str(value).strip().replace(".", "").replace(",", ".")
+    try:
+        return float(current)
+    except ValueError:
+        return 0.0
+
+
+def build_chart_specific_comments(chart: ChartRequest) -> list[str]:
+    if not chart.metrics:
+        return [
+            "No se pudo reconstruir este gráfico con suficiente precisión desde los datos disponibles.",
+            "La slide queda preparada para completar o corregir manualmente si hace falta.",
+        ]
+
+    top = max(chart.metrics, key=lambda metric: metric.value)
+    total = sum(metric.value for metric in chart.metrics) or 1
+    normalized_title = normalize_text(chart.title)
+    use_percentages = "tiers" in normalized_title or "medios" in normalized_title
+    if use_percentages:
+        top_pct = round((top.value / total) * 100)
+        comments = [f"La categoría dominante es {top.label} con {top_pct}% del total."]
+    else:
+        comments = [f"La categoría dominante es {top.label} con {top.raw_value} apariciones."]
+
+    if len(chart.metrics) >= 2:
+        ordered = sorted(chart.metrics, key=lambda metric: metric.value, reverse=True)
+        second = ordered[1]
+        if use_percentages:
+            second_pct = round((second.value / total) * 100)
+            gap_pct = round(((ordered[0].value - ordered[1].value) / total) * 100)
+            comments.append(f"La segunda lectura más relevante es {second.label} con {second_pct}%.")
+            comments.append(f"La brecha frente a la primera categoría es de {gap_pct} puntos porcentuales.")
+        else:
+            comments.append(f"La segunda lectura más relevante es {second.label} con {second.raw_value} apariciones.")
+            gap = ordered[0].value - ordered[1].value
+            comments.append(f"La diferencia entre ambas primeras categorías es de {int(gap)} apariciones.")
+
+    return comments[:3]
+
+
+def add_scope_slide(
+    prs: Presentation,
+    reach_value: str,
+    valuation_value: str,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Alcance y Valorización", background_path, logo_path)
+    cards = [
+        ("Alcance de la gestión", reach_value or "[Completar alcance]"),
+        ("Valorización", valuation_value or "[Completar valorización]"),
+    ]
+    for index, (title, value) in enumerate(cards):
+        top = Inches(1.78 + index * 2.15)
+        shape = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(1.2), top, Inches(5.25), Inches(1.65))
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = COLOR_WHITE
+        shape.line.color.rgb = COLOR_BORDER
+        tf = shape.text_frame
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+        tf.word_wrap = True
+        tf.margin_left = Inches(0.24)
+        tf.margin_right = Inches(0.24)
+        tf.margin_top = Inches(0.14)
+        tf.margin_bottom = Inches(0.14)
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        p.text = title
+        p.font.name = FONT_FAMILY
+        p.font.bold = True
+        p.font.size = Pt(18)
+        p.font.color.rgb = COLOR_PRIMARY
+        p.space_after = Pt(10)
+        p2 = tf.add_paragraph()
+        p2.text = value
+        p2.font.name = FONT_FAMILY
+        p2.font.bold = True
+        p2.font.size = Pt(KPI_VALUE_SIZE)
+        p2.font.color.rgb = COLOR_DARK
+        p2.alignment = PP_ALIGN.CENTER
+
+
+def add_results_table_slide(
+    prs: Presentation,
+    rows: list[ReportRow],
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    headers = ["Fecha", "Medio", "Tier", "Tipo medio", "Valorización", "Alcance", "Link"]
+    lefts = [1.0, 2.15, 5.15, 6.25, 7.75, 9.45, 11.05]
+    widths = [1.0, 2.85, 0.95, 1.35, 1.55, 1.4, 1.15]
+    rows_per_slide = 7
+    table_rows = rows or [ReportRow("[Fecha]", "[Medio]", "[Tipo]", "[Tier]", "[Valorización]", "[Alcance]", "[Link]")]
+
+    for chunk_index, start in enumerate(range(0, len(table_rows), rows_per_slide), start=1):
+        slide_title = "Detalle de Resultados" if chunk_index == 1 else f"Detalle de Resultados ({chunk_index})"
+        slide = add_slide_base(prs, slide_title, background_path, logo_path)
+        for left, width, header in zip(lefts, widths, headers):
+            cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(left), Inches(1.42), Inches(width), Inches(0.42))
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = COLOR_PRIMARY
+            cell.line.fill.background()
+            tf = cell.text_frame
+            tf.margin_left = Inches(0.06)
+            tf.margin_right = Inches(0.06)
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            p.text = header
+            p.font.name = FONT_FAMILY
+            p.font.bold = True
+            p.font.size = Pt(10)
+            p.font.color.rgb = COLOR_WHITE
+
+        chunk = table_rows[start : start + rows_per_slide]
+        for row_index, row in enumerate(chunk):
+            top = Inches(1.93 + row_index * 0.62)
+            values = [row.date_text, row.medium, row.tier, row.media_type, row.valuation, row.reach, row.link]
+            for col_index, (left, width, value) in enumerate(zip(lefts, widths, values)):
+                cell = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, Inches(left), top, Inches(width), Inches(0.5))
+                cell.fill.solid()
+                cell.fill.fore_color.rgb = COLOR_WHITE if row_index % 2 == 0 else COLOR_SECONDARY
+                cell.line.color.rgb = COLOR_BORDER
+                tf = cell.text_frame
+                tf.word_wrap = True
+                tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+                tf.margin_left = Inches(0.08)
+                tf.margin_right = Inches(0.08)
+                tf.margin_top = Inches(0.02)
+                tf.margin_bottom = Inches(0.02)
+                p = tf.paragraphs[0]
+                p.alignment = PP_ALIGN.CENTER if col_index not in {1, 6} else PP_ALIGN.LEFT
+                p.text = "Abrir nota" if col_index == 6 and value else value
+                p.font.name = FONT_FAMILY
+                p.font.size = Pt(10)
+                p.font.color.rgb = COLOR_PRIMARY if col_index == 6 and value else COLOR_DARK
+                if col_index == 6 and value and p.runs:
+                    try:
+                        p.runs[0].hyperlink.address = value
+                    except Exception:
+                        pass
+
+
+def add_featured_publications_slide(
+    prs: Presentation,
+    rows: list[ReportRow],
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Publicaciones destacadas", background_path, logo_path)
+    selected_rows = sorted(
+        [row for row in rows if row.medium.strip()],
+        key=lambda row: (metric_value_for_sort(row.valuation), metric_value_for_sort(row.reach)),
+        reverse=True,
+    )[:4]
+    if not selected_rows:
+        add_text_block(
+            slide,
+            "Notas destacadas",
+            "Aún no hay publicaciones cargadas para destacar en esta versión del reporte.",
+            Inches(1.12),
+            Inches(1.56),
+            Inches(10.9),
+            Inches(2.0),
+        )
+        return
+
+    for index, row in enumerate(selected_rows):
+        card_left = Inches(1.12 + (index % 2) * 5.4)
+        card_top = Inches(1.55 + (index // 2) * 2.15)
+        card = slide.shapes.add_shape(MSO_AUTO_SHAPE_TYPE.ROUNDED_RECTANGLE, card_left, card_top, Inches(5.0), Inches(1.72))
+        card.fill.solid()
+        card.fill.fore_color.rgb = COLOR_WHITE
+        card.line.color.rgb = COLOR_BORDER
+        tf = card.text_frame
+        tf.word_wrap = True
+        tf.margin_left = Inches(0.22)
+        tf.margin_right = Inches(0.22)
+        tf.margin_top = Inches(0.16)
+        tf.margin_bottom = Inches(0.12)
+        title = tf.paragraphs[0]
+        title.text = row.medium
+        title.font.name = FONT_FAMILY
+        title.font.bold = True
+        title.font.size = Pt(15)
+        title.font.color.rgb = COLOR_DARK
+        title.space_after = Pt(6)
+
+        meta = tf.add_paragraph()
+        meta.text = f"{row.date_text} | {row.tier} | {row.media_type}"
+        meta.font.name = FONT_FAMILY
+        meta.font.size = Pt(10)
+        meta.font.color.rgb = COLOR_MUTED
+        meta.space_after = Pt(6)
+
+        stats = tf.add_paragraph()
+        stats.text = f"Valorización: {row.valuation or '-'}   Alcance: {row.reach or '-'}"
+        stats.font.name = FONT_FAMILY
+        stats.font.size = Pt(10)
+        stats.font.color.rgb = COLOR_MUTED
+
+        if row.link:
+            cta = tf.add_paragraph()
+            cta.text = "Abrir nota"
+            cta.font.name = FONT_FAMILY
+            cta.font.size = Pt(10)
+            cta.font.bold = True
+            cta.font.color.rgb = COLOR_PRIMARY
+            if cta.runs:
+                try:
+                    cta.runs[0].hyperlink.address = row.link
+                except Exception:
+                    pass
+
+
 def write_report_summary(
     output_path: Path,
     data: ReportData,
@@ -1456,6 +1716,40 @@ def write_report_summary(
         lines.append("- No se detectaron metricas legibles.")
     summary_path.write_text("\n".join(lines), encoding="utf-8")
     return summary_path
+
+
+def add_month_summary_slide(
+    prs: Presentation,
+    summary: str,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> None:
+    slide = add_slide_base(prs, "Resumen", background_path, logo_path)
+    add_text_block(
+        slide,
+        "Síntesis del mes",
+        summary or "[Completar breve resumen del mes]",
+        Inches(1.12),
+        Inches(1.58),
+        Inches(10.9),
+        Inches(3.9),
+    )
+
+
+def add_next_steps_slide(prs: Presentation, data: ReportData, background_path: Path | None, logo_path: Path | None) -> None:
+    slide = add_slide_base(prs, "Pasos a seguir", background_path, logo_path)
+    bullets = [clean_line(line) for line in data.next_steps.splitlines() if clean_line(line)]
+    if not bullets and data.next_steps.strip():
+        bullets = [item.strip() for item in re.split(r"[;\n]", data.next_steps) if item.strip()]
+    add_bullet_list(
+        slide,
+        "Mes siguiente",
+        bullets or ["[Completar siguientes pasos para el próximo mes]"],
+        Inches(1.12),
+        Inches(1.58),
+        Inches(10.9),
+        Inches(3.9),
+    )
 
 
 def write_manual_report_summary(
@@ -1621,3 +1915,126 @@ def generate_report_from_pdf(
     prs.save(output_path)
     write_report_summary(output_path, data, background_path, logo_path)
     return [output_path], data
+
+
+def write_manual_report_summary(
+    output_path: Path,
+    manual_input: ManualReportInput,
+    background_path: Path | None,
+    logo_path: Path | None,
+) -> Path:
+    summary_path = output_path.with_suffix(".txt")
+    lines = [
+        f"Archivo generado: {output_path.name}",
+        f"Cliente: {manual_input.client_name}",
+        f"Mes: {manual_input.report_month}",
+        "",
+        "Branding aplicado:",
+        f"- Fondo personalizado: {'si' if background_path and background_path.exists() else 'no'}",
+        f"- Logo personalizado: {'si' if logo_path and logo_path.exists() else 'no'}",
+        "",
+        "Slides generadas:",
+        "- Breve resumen del mes",
+        "- Distribución de tiers",
+        "- Distribución de medios",
+        "- Publicaciones mes a mes",
+        "- Alcance y valorización",
+        "- Tabla de resultados",
+        "- Publicaciones destacadas",
+        "- Pasos a seguir",
+    ]
+    summary_path.write_text("\n".join(lines), encoding="utf-8")
+    return summary_path
+
+
+def generate_report_from_manual_fields(
+    report_title: str,
+    client_name: str,
+    report_month: str,
+    monthly_summary: str,
+    executive_comment: str,
+    next_steps: str,
+    tier_values: dict[str, int],
+    media_values: dict[str, int],
+    monthly_values: list[int],
+    reach_value: str,
+    valuation_value: str,
+    table_rows_text: str = "",
+    table_rows_file: Path | None = None,
+    source_path: Path | None = None,
+    background_path: Path | None = None,
+    logo_path: Path | None = None,
+    output_dir: Path | None = None,
+) -> tuple[list[Path], ManualReportInput]:
+    output_dir = output_dir or get_output_dir()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    tier_metrics = [MetricPoint(label=label, value=int(value), raw_value=str(int(value))) for label, value in tier_values.items()]
+    media_metrics = [MetricPoint(label=label, value=int(value), raw_value=str(int(value))) for label, value in media_values.items()]
+    month_labels = ["Mes 1", "Mes 2", "Mes 3", "Mes 4", "Mes 5", "Mes 6", "Mes 7", "Mes 8", "Mes 9", "Mes 10", "Mes 11", "Mes 12"]
+    monthly_trend = [
+        MetricPoint(label=label, value=int(value), raw_value=str(int(value)))
+        for label, value in zip(month_labels, monthly_values)
+    ]
+    manual_input = ManualReportInput(
+        title=report_title,
+        client_name=client_name,
+        report_month=report_month,
+        monthly_summary=monthly_summary,
+        executive_comment=executive_comment,
+        next_steps=next_steps,
+        tier_metrics=tier_metrics,
+        media_metrics=media_metrics,
+        monthly_trend=monthly_trend,
+        reach_value=reach_value,
+        valuation_value=valuation_value,
+        table_rows=parse_table_file(table_rows_file) if table_rows_file else parse_table_rows(table_rows_text),
+    )
+
+    prs = Presentation()
+    prs.slide_width = SLIDE_WIDTH
+    prs.slide_height = SLIDE_HEIGHT
+
+    cover_data = ReportData(
+        source_text="",
+        title=report_title,
+        source_name=source_path.name if source_path else "manual",
+        client_name=client_name,
+        report_month=report_month,
+    )
+    add_cover_slide(prs, cover_data, background_path, logo_path)
+    add_month_summary_slide(prs, monthly_summary, background_path, logo_path)
+    add_named_chart_slide(
+        prs,
+        ChartRequest(title="Distribución de Tiers", chart_type="bar", aliases=(), metrics=tier_metrics),
+        background_path,
+        logo_path,
+    )
+    add_named_chart_slide(
+        prs,
+        ChartRequest(title="Distribución de Medios", chart_type="bar", aliases=(), metrics=media_metrics),
+        background_path,
+        logo_path,
+    )
+    add_monthly_trend_slide(prs, monthly_trend, background_path, logo_path)
+    add_scope_slide(prs, reach_value, valuation_value, background_path, logo_path)
+
+    exec_data = ReportData(
+        source_text="",
+        title=report_title,
+        source_name=source_path.name if source_path else "manual",
+        client_name=client_name,
+        report_month=report_month,
+        executive_comment=executive_comment,
+        next_steps=next_steps,
+    )
+    add_results_table_slide(prs, manual_input.table_rows, background_path, logo_path)
+    add_featured_publications_slide(prs, manual_input.table_rows, background_path, logo_path)
+    add_next_steps_slide(prs, exec_data, background_path, logo_path)
+
+    source_stem = source_path.stem if source_path else client_name or "reporte"
+    slug = re.sub(r"[^a-z0-9_]+", "_", source_stem.lower()).strip("_") or "reporte"
+    output_path = output_dir / f"Reporte_Automatico_{slug}_{datetime.now().year}.pptx"
+    prs.save(output_path)
+    write_manual_report_summary(output_path, manual_input, background_path, logo_path)
+    return [output_path], manual_input
